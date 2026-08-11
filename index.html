@@ -1,0 +1,678 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The Regatta — the next tide runs the race</title>
+<meta name="description" content="Bet on the boats. The next Bitcoin block runs the race — nobody knows the winner before the tide comes in. Provably fair, pure static.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ctext y='26' font-size='26'%3E⛵%3C/text%3E%3C/svg%3E">
+<style>
+  :root{
+    --paper:#f7f1e3; --paper-2:#efe6d2; --ink:#232e38; --ink-soft:#5c6a76;
+    --line:#d9cdb4; --accent:#1e6f8e; --accent-ink:#ffffff; --gold:#b8860b;
+    --win:#1e7d4f; --lose:#b0483f;
+    --tern:#2563c9; --gull:#d29b12; --heron:#2e7d55; --petrel:#7a4fbf; --albatross:#c94f4f;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{
+    background:
+      radial-gradient(1200px 500px at 50% -180px, #fdf9ee 0%, var(--paper) 55%),
+      var(--paper);
+    color:var(--ink);
+    font:15px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif;
+    min-height:100vh;
+  }
+  .wrap{max-width:1060px;margin:0 auto;padding:14px 16px 40px}
+
+  /* ---------- header ---------- */
+  header{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;padding:6px 2px 10px}
+  h1{
+    font:700 34px/1 "Iowan Old Style",Palatino,Georgia,serif;
+    letter-spacing:.06em;margin:0;color:var(--ink);
+  }
+  h1 .flag{font-size:24px;vertical-align:6px;margin-right:2px}
+  .tagline{color:var(--ink-soft);font-style:italic;font-family:Georgia,serif}
+  .spacer{flex:1}
+  .chip{
+    display:inline-flex;align-items:center;gap:7px;padding:7px 13px;border-radius:999px;
+    background:#fff;border:1px solid var(--line);font-weight:600;white-space:nowrap;
+    font-variant-numeric:tabular-nums;box-shadow:0 1px 2px rgba(35,46,56,.06);
+  }
+  .chip small{font-weight:500;color:var(--ink-soft)}
+  #sound-btn{cursor:pointer;user-select:none}
+  #sound-btn:hover{border-color:var(--accent)}
+
+  /* ---------- course ---------- */
+  .course-frame{
+    border:1px solid var(--line);border-radius:14px;overflow:hidden;background:#bfe2ef;
+    box-shadow:0 10px 30px -18px rgba(30,60,80,.45), 0 1px 3px rgba(35,46,56,.08);
+    position:relative;
+  }
+  canvas{display:block;width:100%;height:auto}
+  #banner{
+    position:absolute;left:0;right:0;top:34%;text-align:center;pointer-events:none;
+    opacity:0;transition:opacity .35s ease;
+  }
+  #banner.show{opacity:1}
+  #banner .inner{
+    display:inline-block;background:rgba(247,241,227,.94);border:1px solid var(--line);
+    border-radius:12px;padding:14px 26px;box-shadow:0 12px 30px -12px rgba(30,60,80,.5);
+  }
+  #banner .head{font:700 26px/1.2 "Iowan Old Style",Palatino,Georgia,serif;letter-spacing:.03em}
+  #banner .sub{color:var(--ink-soft);margin-top:4px;font-variant-numeric:tabular-nums}
+  #banner .sub b.win{color:var(--win)} #banner .sub b.lose{color:var(--lose)}
+
+  /* ---------- race card ---------- */
+  .board{display:grid;grid-template-columns:1fr 320px;gap:16px;margin-top:16px;align-items:start}
+  @media (max-width:840px){.board{grid-template-columns:1fr}}
+  .card{
+    background:#fff;border:1px solid var(--line);border-radius:14px;overflow:hidden;
+    box-shadow:0 1px 3px rgba(35,46,56,.07);
+  }
+  .card h2{
+    margin:0;padding:11px 16px;font:700 13px/1 system-ui,sans-serif;letter-spacing:.14em;
+    text-transform:uppercase;color:var(--ink-soft);border-bottom:1px solid var(--line);
+    background:linear-gradient(#fff, #fbf7ec);
+    display:flex;align-items:center;gap:8px;
+  }
+  .card h2 .right{margin-left:auto;letter-spacing:0;text-transform:none;font-weight:500}
+
+  table.field{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
+  table.field td{padding:11px 12px;border-bottom:1px solid #f0e9d8;vertical-align:middle}
+  table.field tr:last-child td{border-bottom:0}
+  table.field tr.pick{background:#f3f8fb;box-shadow:inset 3px 0 0 var(--accent)}
+  table.field tr:hover{background:#f8f4ea;cursor:pointer}
+  table.field tr.pick:hover{background:#eef6fa}
+  .swatch{width:14px;height:14px;border-radius:4px;display:inline-block;vertical-align:-2px;box-shadow:inset 0 0 0 1px rgba(0,0,0,.15)}
+  .bname{font-weight:650}
+  .sail-no{color:var(--ink-soft);font-size:12px;margin-left:6px}
+  .odds{font-weight:700;text-align:right;white-space:nowrap}
+  .chance{color:var(--ink-soft);font-size:12.5px;text-align:right;white-space:nowrap}
+
+  /* ---------- bet slip ---------- */
+  .slip{padding:14px 16px;display:flex;flex-direction:column;gap:12px}
+  .slip .row{display:flex;align-items:center;gap:8px}
+  .slip label{font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-soft);font-weight:600}
+  #stake{
+    flex:1;min-width:0;font:600 20px/1 system-ui;color:var(--ink);background:var(--paper);
+    border:1px solid var(--line);border-radius:9px;padding:9px 12px;text-align:right;
+    font-variant-numeric:tabular-nums;
+  }
+  #stake:focus{outline:2px solid var(--accent);outline-offset:-1px}
+  .quick{display:flex;gap:6px}
+  .quick button{
+    flex:1;padding:6px 0;border:1px solid var(--line);border-radius:8px;background:#fff;
+    color:var(--ink-soft);font:600 12.5px system-ui;cursor:pointer;
+  }
+  .quick button:hover{border-color:var(--accent);color:var(--accent)}
+  .returns{display:flex;justify-content:space-between;color:var(--ink-soft);font-size:13.5px}
+  .returns b{color:var(--ink);font-variant-numeric:tabular-nums}
+  #bet-btn{
+    border:0;border-radius:10px;padding:13px;cursor:pointer;
+    font:700 16px system-ui;letter-spacing:.04em;color:var(--accent-ink);
+    background:linear-gradient(#2a86a8, var(--accent));
+    box-shadow:0 6px 14px -6px rgba(30,111,142,.55), inset 0 1px 0 rgba(255,255,255,.25);
+  }
+  #bet-btn:hover{filter:brightness(1.06)}
+  #bet-btn:active{transform:translateY(1px)}
+  #bet-btn:disabled{background:#c9c2b2;box-shadow:none;cursor:default}
+  .mode{display:flex;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+  .mode button{
+    flex:1;padding:8px 4px;border:0;background:#fff;color:var(--ink-soft);
+    font:600 12.5px system-ui;cursor:pointer;
+  }
+  .mode button.on{background:var(--accent);color:#fff}
+  .hint{font-size:12.5px;color:var(--ink-soft);line-height:1.5}
+  .hint a{color:var(--accent)}
+  #tide-note{display:none;background:#f3f8fb;border:1px solid #cfe3ec;border-radius:9px;padding:9px 11px;font-size:12.5px;color:#23576d}
+  #tide-note b{font-variant-numeric:tabular-nums}
+
+  /* ---------- log ---------- */
+  .log-card{margin-top:16px}
+  table.log{width:100%;border-collapse:collapse;font-size:13.5px;font-variant-numeric:tabular-nums}
+  table.log th{
+    text-align:left;padding:8px 12px;color:var(--ink-soft);font:600 11px system-ui;
+    letter-spacing:.1em;text-transform:uppercase;border-bottom:1px solid var(--line);
+  }
+  table.log td{padding:8px 12px;border-bottom:1px solid #f0e9d8}
+  table.log tr:last-child td{border-bottom:0}
+  .delta-win{color:var(--win);font-weight:700}
+  .delta-lose{color:var(--lose);font-weight:600}
+  .tag{font-size:11px;padding:2px 7px;border-radius:999px;border:1px solid var(--line);color:var(--ink-soft)}
+  .tag.tide{border-color:#bcd7e4;background:#eef6fa;color:#23576d}
+  .verify-link{color:var(--accent);text-decoration:none}
+  .verify-link:hover{text-decoration:underline}
+  .empty{padding:18px 16px;color:var(--ink-soft);font-style:italic;font-family:Georgia,serif}
+
+  footer{margin-top:22px;color:var(--ink-soft);font-size:13px;line-height:1.6}
+  footer a{color:var(--accent)}
+  details summary{cursor:pointer;font-weight:600;color:var(--ink)}
+  details[open]{background:#fff;border:1px solid var(--line);border-radius:10px;padding:10px 14px}
+  details:not([open]){padding:10px 14px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1><span class="flag">⛵</span>THE REGATTA</h1>
+    <span class="tagline">the next tide runs the race</span>
+    <span class="spacer"></span>
+    <span class="chip" id="tide-chip" title="Bitcoin testnet4 tip">🌊 <small>tide</small> <span id="tide-height">—</span></span>
+    <span class="chip">🪙 <span id="purse">0</span> <small>doubloons</small></span>
+    <span class="chip" id="sound-btn" title="sound on/off">🔊</span>
+  </header>
+
+  <div class="course-frame">
+    <canvas id="sea" width="1028" height="430"></canvas>
+    <div id="banner"><div class="inner"><div class="head" id="banner-head"></div><div class="sub" id="banner-sub"></div></div></div>
+  </div>
+
+  <div class="board">
+    <div class="card">
+      <h2>Race card <span class="right" id="race-no"></span></h2>
+      <table class="field" id="field"><tbody></tbody></table>
+    </div>
+
+    <div class="card">
+      <h2>Bet slip</h2>
+      <div class="slip">
+        <div class="mode" id="mode">
+          <button data-mode="practice" class="on" title="Instant race, local seed — for fun">Practice</button>
+          <button data-mode="tide" title="The next Bitcoin block decides — provably fair">⚓ The Tide</button>
+        </div>
+        <div class="row">
+          <label for="stake">Stake</label>
+          <input id="stake" type="number" min="1" step="1" value="50" inputmode="numeric">
+        </div>
+        <div class="quick">
+          <button data-q="10">10</button><button data-q="50">50</button>
+          <button data-q="100">100</button><button data-q="max">Max</button>
+        </div>
+        <div class="returns"><span>Returns if <b id="ret-boat">—</b> wins</span><b id="ret-amt">—</b></div>
+        <div id="tide-note">⚓ Your race sails on block <b id="tide-block">—</b> — the tide turns in ~10 min. Leave the page open or come back; the result waits for you.</div>
+        <button id="bet-btn">Place bet &amp; start</button>
+        <div class="hint" id="mode-hint">Practice races are seeded locally and run at once — pure fun, not provable.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card log-card">
+    <h2>The log <span class="right" id="log-count"></span></h2>
+    <div id="log-empty" class="empty">No races yet. Pick a boat, place a bet, and watch the water.</div>
+    <table class="log" id="log" style="display:none">
+      <thead><tr><th>Race</th><th>Boat</th><th>Stake</th><th>Winner</th><th>Net</th><th>Proof</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
+  <footer>
+    <details>
+      <summary>Provably fair — how the tide decides</summary>
+      <p>In <b>⚓ Tide</b> mode your bet names a Bitcoin (testnet4) block that does not exist yet.
+      When that block is mined, the race seed is <code>sha256(blockHash | mark)</code> — your
+      <i>mark</i> is a random nonce fixed at bet time. The seed picks a number on a 10,000-point
+      line; each boat owns a band of it sized by its odds. Nobody — not you, not this page, not
+      anyone — knows the winner before the tide comes in, and anyone can recompute it afterwards
+      from public chain data. The <b>verify ✓</b> in the log does exactly that, in your browser.</p>
+      <p>Even the race replay is honest: every gust and stall is drawn from the same seed, so two
+      replays of the same race are identical, anywhere.</p>
+      <p>Practice mode is seeded locally and marked as such — instant, but not provable.</p>
+    </details>
+    <p>Doubloons are play money. Part of <a href="https://github.com/tide-games">tide-games</a> —
+    source on <a href="https://github.com/tide-games/regatta">GitHub</a> · maths in
+    <a href="regatta.js">regatta.js</a>, 100% pure and testable · house edge 3%, identical for every boat.</p>
+  </footer>
+</div>
+
+<script type="module">
+import { BOATS, WEIGHT_SPACE, rollFromHash, winnerIndex, quote, settle, raceTrace }
+  from './regatta.js';
+
+/* ================================================================ state */
+const HULLS = { tern:'#2563c9', gull:'#d29b12', heron:'#2e7d55', petrel:'#7a4fbf', albatross:'#c94f4f' };
+const SAILNO = { tern:'no. 7', gull:'no. 12', heron:'no. 3', petrel:'no. 21', albatross:'no. 88' };
+const LS = {
+  purse:'regatta-purse', log:'regatta-log', pending:'regatta-pending',
+  sound:'regatta-sound', races:'regatta-races',
+};
+const $ = (id) => document.getElementById(id);
+const MEMPOOL = 'https://mempool.space/testnet4/api';
+
+let purse = load(LS.purse, 1000);
+let raceNo = load(LS.races, 0);
+let log = load(LS.log, []);
+let pending = load(LS.pending, null);   // {height, mark, boat, stake, placedAt}
+let soundOn = load(LS.sound, true);
+let picked = 0;
+let mode = 'practice';
+let racing = false;                      // a race animation is on the water
+
+function load(k, d){ try{ const v = JSON.parse(localStorage.getItem(k)); return v ?? d; }catch{ return d; } }
+function save(k, v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch{} }
+const fmt = (n) => n.toLocaleString('en-US');
+
+async function sha256hex(s){
+  const b = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s));
+  return [...new Uint8Array(b)].map((x)=>x.toString(16).padStart(2,'0')).join('');
+}
+const randHex = (n=16) => [...crypto.getRandomValues(new Uint8Array(n))].map((x)=>x.toString(16).padStart(2,'0')).join('');
+
+/* ================================================================ audio */
+let AC = null;
+function ac(){ if(!AC) AC = new (window.AudioContext||window.webkitAudioContext)(); return AC; }
+function env(g, t0, a, peak, d){ g.gain.setValueAtTime(0.0001,t0); g.gain.exponentialRampToValueAtTime(peak,t0+a); g.gain.exponentialRampToValueAtTime(0.0001,t0+a+d); }
+function horn(){
+  if(!soundOn) return; const c=ac(), t=c.currentTime;
+  [220,277].forEach((f,i)=>{ const o=c.createOscillator(), g=c.createGain();
+    o.type='sawtooth'; o.frequency.value=f; o.connect(g); g.connect(c.destination);
+    env(g,t+i*0.02,0.02,0.12,0.85); o.start(t); o.stop(t+1); });
+}
+function gull(){
+  if(!soundOn||Math.random()<0.5) return; const c=ac(), t=c.currentTime;
+  const o=c.createOscillator(), g=c.createGain(); o.type='sine';
+  o.frequency.setValueAtTime(1100,t); o.frequency.exponentialRampToValueAtTime(1900,t+0.09);
+  o.frequency.exponentialRampToValueAtTime(900,t+0.22);
+  o.connect(g); g.connect(c.destination); env(g,t,0.02,0.045,0.25); o.start(t); o.stop(t+0.3);
+}
+function fanfare(win){
+  if(!soundOn) return; const c=ac(), t=c.currentTime;
+  const notes = win ? [523,659,784,1047] : [330,262];
+  notes.forEach((f,i)=>{ const o=c.createOscillator(), g=c.createGain();
+    o.type='triangle'; o.frequency.value=f; o.connect(g); g.connect(c.destination);
+    env(g,t+i*0.13,0.02,0.11,win?0.5:0.4); o.start(t+i*0.13); o.stop(t+i*0.13+0.6); });
+}
+function tick(){
+  if(!soundOn) return; const c=ac(), t=c.currentTime;
+  const o=c.createOscillator(), g=c.createGain(); o.type='square'; o.frequency.value=1568;
+  o.connect(g); g.connect(c.destination); env(g,t,0.005,0.03,0.05); o.start(t); o.stop(t+0.08);
+}
+
+/* ================================================================ course rendering */
+const cv = $('sea'), ctx = cv.getContext('2d');
+const W = cv.width, H = cv.height;
+const SHORE = 74;                 // sky/headland band height
+const LANES = BOATS.length;
+const LANE0 = SHORE + 62, LANEH = (H - LANE0 - 34) / (LANES - 1);
+const X0 = 78, X1 = W - 86;       // start / finish line x
+let t0 = performance.now();
+// The race clock is wall-time, not frame deltas: Chrome stops rAF entirely in
+// hidden tabs, and a race must finish (and settle) even if the tab is covered
+// mid-water. traceElapsed() drives the animation; the interval below settles
+// an overdue race when rAF is starved.
+let trace = null, traceStart = 0, traceDur = 11500, onTraceDone = null, finished = [];
+const traceElapsed = () => performance.now() - traceStart;
+function finishTrace(){
+  const done = onTraceDone; const tr = trace;
+  trace = null; onTraceDone = null;
+  if(tr) finished = tr[tr.length-1];
+  if(done) done();
+}
+setInterval(()=>{ if(trace && traceElapsed() >= traceDur) finishTrace(); }, 1000);
+let confetti = [];
+const idleBob = BOATS.map((_,i)=>Math.random()*7);
+
+function laneY(i){ return LANE0 + i*LANEH; }
+function boatX(p){ return X0 + p*(X1-X0); }
+
+function drawSky(t){
+  const g = ctx.createLinearGradient(0,0,0,SHORE+90);
+  g.addColorStop(0,'#dff0fa'); g.addColorStop(1,'#bfe2ef');
+  ctx.fillStyle=g; ctx.fillRect(0,0,W,SHORE+90);
+  // sun
+  ctx.fillStyle='rgba(255,244,204,.9)';
+  ctx.beginPath(); ctx.arc(W-150,44,20,0,7); ctx.fill();
+  ctx.fillStyle='rgba(255,244,204,.35)';
+  ctx.beginPath(); ctx.arc(W-150,44,32,0,7); ctx.fill();
+  // clouds
+  ctx.fillStyle='rgba(255,255,255,.85)';
+  for(let i=0;i<4;i++){
+    const cx=((t*0.008+i*290)%(W+220))-110, cy=26+((i*37)%38);
+    for(let p=0;p<4;p++){ ctx.beginPath(); ctx.arc(cx+p*17-25, cy+(p%2?4:0), 12-(p%2)*3, 0, 7); ctx.fill(); }
+  }
+  // headland
+  ctx.fillStyle='#a8c8b8';
+  ctx.beginPath(); ctx.moveTo(0,SHORE+22);
+  ctx.quadraticCurveTo(W*0.18,SHORE-26,W*0.38,SHORE+16);
+  ctx.quadraticCurveTo(W*0.55,SHORE+34,W,SHORE+18); ctx.lineTo(W,SHORE+60); ctx.lineTo(0,SHORE+60);
+  ctx.fill();
+  // lighthouse on the point
+  ctx.fillStyle='#e8e2d2'; ctx.fillRect(W*0.18-5, SHORE-38, 10, 30);
+  ctx.fillStyle='#c94f4f'; ctx.fillRect(W*0.18-5, SHORE-38, 10, 7); ctx.fillRect(W*0.18-5, SHORE-22, 10, 6);
+  ctx.fillStyle='#3d4a55'; ctx.fillRect(W*0.18-7, SHORE-42, 14, 5);
+}
+function drawSea(t){
+  const g = ctx.createLinearGradient(0,SHORE+40,0,H);
+  g.addColorStop(0,'#8ec8de'); g.addColorStop(1,'#4f97b5');
+  ctx.fillStyle=g; ctx.fillRect(0,SHORE+40,W,H);
+  // moving wave highlights
+  ctx.strokeStyle='rgba(255,255,255,.35)'; ctx.lineWidth=1.5;
+  for(let r=0;r<9;r++){
+    const y = SHORE+64 + r*((H-SHORE-70)/9) + Math.sin(t*0.001+r)*2;
+    ctx.beginPath();
+    for(let x=0;x<=W;x+=14){
+      const yy = y + Math.sin(x*0.045 + t*0.0022 + r*1.7)*2.6;
+      x===0?ctx.moveTo(x,yy):ctx.lineTo(x,yy);
+    }
+    ctx.stroke();
+  }
+  // sparkles
+  ctx.fillStyle='rgba(255,255,255,.5)';
+  for(let i=0;i<26;i++){
+    const x=(i*173+t*0.05)%W, y=SHORE+70+((i*89)%(H-SHORE-90));
+    if(Math.sin(t*0.004+i*2.4)>0.6) ctx.fillRect(x,y,2.5,1.4);
+  }
+}
+function drawCourse(){
+  // start & finish
+  ctx.strokeStyle='rgba(255,255,255,.7)'; ctx.setLineDash([7,7]); ctx.lineWidth=2;
+  ctx.beginPath(); ctx.moveTo(X0,LANE0-34); ctx.lineTo(X0,H-14); ctx.stroke();
+  ctx.setLineDash([]);
+  // finish: checkered
+  const fy0=LANE0-34, fh=H-14-fy0, sq=8;
+  for(let r=0;r<Math.ceil(fh/sq);r++) for(let c=0;c<2;c++){
+    ctx.fillStyle=(r+c)%2?'#2c3540':'#f4f2ea';
+    ctx.fillRect(X1+c*sq, fy0+r*sq, sq, Math.min(sq, fy0+fh-(fy0+r*sq)));
+  }
+  // flags on posts
+  flag(X0,LANE0-42,'#1e6f8e'); flag(X1+8,LANE0-42,'#c94f4f');
+  // lane buoys
+  ctx.fillStyle='rgba(255,120,90,.85)';
+  for(let i=0;i<LANES-1;i++){
+    const y=laneY(i)+LANEH/2+8;
+    for(let b=0;b<7;b++){ const x=X0+40+b*((X1-X0-70)/6); ctx.beginPath(); ctx.arc(x,y,2.6,0,7); ctx.fill(); }
+  }
+}
+function flag(x,y,color){
+  ctx.strokeStyle='#5a5348'; ctx.lineWidth=2;
+  ctx.beginPath(); ctx.moveTo(x,y); ctx.lineTo(x,y+26); ctx.stroke();
+  ctx.fillStyle=color;
+  const w=Math.sin(performance.now()*0.006+x)*2;
+  ctx.beginPath(); ctx.moveTo(x,y); ctx.quadraticCurveTo(x+9,y+2+w,x+16,y+3);
+  ctx.lineTo(x+16,y+10); ctx.quadraticCurveTo(x+9,y+9+w,x,y+11); ctx.fill();
+}
+function drawBoat(i, x, y, t, speed){
+  const hull = HULLS[BOATS[i].key];
+  const bob = Math.sin(t*0.003 + idleBob[i])*2.2;
+  const heel = Math.min(0.16, 0.05 + speed*0.9);
+  ctx.save(); ctx.translate(x, y+bob); ctx.rotate(-heel*0.35);
+  // wake
+  if(speed>0.001){
+    ctx.strokeStyle='rgba(255,255,255,.55)'; ctx.lineWidth=2;
+    ctx.beginPath(); ctx.moveTo(-16,7); ctx.quadraticCurveTo(-34,9+Math.sin(t*0.02+i)*2,-52,6);
+    ctx.moveTo(-16,9); ctx.quadraticCurveTo(-30,13,-44,12); ctx.stroke();
+  }
+  // hull
+  ctx.fillStyle=hull;
+  ctx.beginPath(); ctx.moveTo(-18,4); ctx.quadraticCurveTo(0,12,20,4);
+  ctx.lineTo(14,10); ctx.quadraticCurveTo(0,15,-13,10); ctx.closePath(); ctx.fill();
+  ctx.fillStyle='rgba(0,0,0,.18)'; ctx.fillRect(-13,9,27,2);
+  // mast
+  ctx.strokeStyle='#5a5348'; ctx.lineWidth=1.6;
+  ctx.beginPath(); ctx.moveTo(1,5); ctx.lineTo(1,-30); ctx.stroke();
+  // mainsail — belly with the wind
+  const belly = 5 + speed*260 + Math.sin(t*0.004+i)*1;
+  ctx.fillStyle='#fbf8ef';
+  ctx.beginPath(); ctx.moveTo(1,-29); ctx.quadraticCurveTo(1+Math.min(14,belly),-14,1,3); ctx.closePath();
+  ctx.fill(); ctx.strokeStyle='rgba(90,83,72,.5)'; ctx.lineWidth=.8; ctx.stroke();
+  // jib
+  ctx.fillStyle='#f3eee0';
+  ctx.beginPath(); ctx.moveTo(2,-24); ctx.quadraticCurveTo(13,-12,19,3); ctx.lineTo(2,1); ctx.closePath(); ctx.fill();
+  // pennant in hull color
+  ctx.fillStyle=hull;
+  ctx.beginPath(); ctx.moveTo(1,-30); ctx.lineTo(9,-28); ctx.lineTo(1,-26); ctx.fill();
+  ctx.restore();
+}
+function drawConfetti(dt){
+  confetti = confetti.filter((p)=>p.y<H+10);
+  for(const p of confetti){
+    p.x+=p.vx*dt; p.y+=p.vy*dt; p.vy+=0.00045*dt; p.r+=p.vr*dt;
+    ctx.save(); ctx.translate(p.x,p.y); ctx.rotate(p.r);
+    ctx.fillStyle=p.c; ctx.fillRect(-3,-2,6,4); ctx.restore();
+  }
+}
+function burst(x,y){
+  const cs=['#2563c9','#d29b12','#2e7d55','#c94f4f','#f4f2ea'];
+  for(let i=0;i<70;i++) confetti.push({
+    x,y, vx:(Math.random()-0.5)*0.5, vy:-0.25-Math.random()*0.3,
+    vr:(Math.random()-0.5)*0.02, r:Math.random()*6, c:cs[i%cs.length],
+  });
+}
+
+let lastFrame = performance.now();
+function frame(now){
+ try{
+  const t = now - t0, dt = Math.min(50, now-lastFrame); lastFrame=now;
+  ctx.clearRect(0,0,W,H);
+  drawSky(t); drawSea(t); drawCourse();
+
+  let positions;
+  if(trace){
+    const u = Math.min(1, traceElapsed()/traceDur);
+    const idx = u*(trace.length-1), lo=Math.floor(idx), hi=Math.min(trace.length-1,lo+1), f=idx-lo;
+    positions = BOATS.map((_,i)=> trace[lo][i]+(trace[hi][i]-trace[lo][i])*f);
+    if(u>=1) finishTrace();
+  } else {
+    positions = finished.length ? finished : BOATS.map(()=>0);
+  }
+  const speeds = positions.map((p,i)=> trace? Math.max(0,(p-(frame.prev?.[i]??p))) / Math.max(1,dt) : 0);
+  frame.prev = positions.slice();
+  BOATS.forEach((_,i)=> drawBoat(i, boatX(positions[i]), laneY(i), t, speeds[i]||0));
+  drawConfetti(dt);
+  if(Math.random()<0.0008) gull();
+ }catch(e){ console.log('[regatta] FRAME DIED:', e.message, '|', (e.stack||'').split('\n')[1]); }
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+
+/* ================================================================ race flow */
+async function runRace({seedHex, boat, stake, tideInfo}){
+  racing = true; renderSlip();
+  const roll = rollFromHash(seedHex);
+  const winner = winnerIndex(roll);
+  // The outcome is decided the moment the seed exists — settle the books
+  // BEFORE the theatre, so a reload mid-animation can never eat a stake.
+  const out = settle({ boatIndex: boat, stake, roll });
+  purse += out.payout; save(LS.purse, purse);
+  raceNo++; save(LS.races, raceNo);
+  log.unshift({
+    n: raceNo, boat, stake, winner, delta: out.delta, roll,
+    mode: tideInfo? 'tide':'practice',
+    height: tideInfo?.height ?? null, mark: tideInfo?.mark ?? null,
+    blockHash: tideInfo?.blockHash ?? null, at: Date.now(),
+  });
+  log = log.slice(0, 60); save(LS.log, log);
+  // Now the water: replay the decided race.
+  const tr = raceTrace(seedHex, winner);
+  hideBanner();
+  horn();
+  trace = tr; traceStart = performance.now(); finished = [];
+  await new Promise((res)=>{ onTraceDone = res; });
+  burst(boatX(1), laneY(winner));
+  fanfare(out.won);
+  showBanner(
+    `${BOATS[winner].name} takes the gun!`,
+    out.won ? `You backed the winner — <b class="win">+${fmt(out.delta)}</b> doubloons`
+            : `Your ${BOATS[boat].name} came home behind — <b class="lose">−${fmt(stake)}</b>`,
+  );
+  racing = false;
+  renderAll();
+}
+
+function showBanner(head, subHTML){
+  $('banner-head').textContent = head;
+  $('banner-sub').innerHTML = subHTML;
+  $('banner').classList.add('show');
+  clearTimeout(showBanner.t);
+  showBanner.t = setTimeout(hideBanner, 6000);
+}
+function hideBanner(){ $('banner').classList.remove('show'); }
+
+/* ---------------- practice ---------------- */
+async function practiceRace(boat, stake){
+  purse -= stake; save(LS.purse, purse); renderHeader();
+  const seed = await sha256hex('practice|' + randHex(16));
+  await runRace({ seedHex: seed, boat, stake });
+}
+
+/* ---------------- the tide ---------------- */
+let tipHeight = null, tipAt = 0;
+async function fetchTip(){
+  if(Date.now()-tipAt < 30_000 && tipHeight) return tipHeight;
+  const r = await fetch(MEMPOOL + '/blocks/tip/height');
+  if(!r.ok) throw new Error('tip ' + r.status);
+  tipHeight = Number(await r.text()); tipAt = Date.now();
+  $('tide-height').textContent = fmt(tipHeight);
+  return tipHeight;
+}
+const blockHashCache = {};
+async function hashAtHeight(h){
+  if(blockHashCache[h]) return blockHashCache[h];
+  const r = await fetch(MEMPOOL + '/block-height/' + h);
+  if(r.status===404) return null;
+  if(!r.ok) throw new Error('block ' + r.status);
+  const hash = (await r.text()).trim();
+  blockHashCache[h] = hash;                    // immutable — cache forever
+  return hash;
+}
+async function tideBet(boat, stake){
+  const tip = await fetchTip();
+  const height = tip + 1;                      // a block nobody has seen
+  const mark = randHex(16);
+  purse -= stake; save(LS.purse, purse);
+  pending = { height, mark, boat, stake, placedAt: Date.now() };
+  save(LS.pending, pending);
+  renderAll();
+  showBanner('The fleet is on the line', `Race sails on block <b>${fmt(height)}</b> — the tide turns in about ten minutes.`);
+  watchTide();
+}
+let tideTimer = null;
+function watchTide(){
+  if(tideTimer || !pending) return;
+  tideTimer = setInterval(async ()=>{
+    try{
+      const hash = await hashAtHeight(pending.height);
+      if(!hash) { fetchTip().catch(()=>{}); return; }
+      clearInterval(tideTimer); tideTimer=null;
+      const p = pending; pending = null; save(LS.pending, null);
+      const seed = await sha256hex(hash + '|' + p.mark);
+      await runRace({ seedHex: seed, boat: p.boat, stake: p.stake,
+        tideInfo: { height: p.height, mark: p.mark, blockHash: hash } });
+    }catch(e){ /* offline: try again next tick */ }
+  }, 30_000);
+  // immediate check too (the block may already be in)
+  (async ()=>{ try{
+    const hash = await hashAtHeight(pending.height);
+    if(hash){ clearInterval(tideTimer); tideTimer=null;
+      const p = pending; pending = null; save(LS.pending, null);
+      const seed = await sha256hex(hash + '|' + p.mark);
+      await runRace({ seedHex: seed, boat: p.boat, stake: p.stake,
+        tideInfo: { height: p.height, mark: p.mark, blockHash: hash } });
+    }
+  }catch(e){} })();
+}
+
+/* ================================================================ UI */
+function renderHeader(){ $('purse').textContent = fmt(purse); $('sound-btn').textContent = soundOn?'🔊':'🔇'; }
+function renderField(){
+  const tb = $('field').querySelector('tbody'); tb.innerHTML='';
+  BOATS.forEach((b,i)=>{
+    const q = quote(i, 100);
+    const tr = document.createElement('tr');
+    if(i===picked) tr.className='pick';
+    tr.innerHTML = `
+      <td style="width:26px"><span class="swatch" style="background:${HULLS[b.key]}"></span></td>
+      <td><span class="bname">${b.name}</span><span class="sail-no">${SAILNO[b.key]}</span></td>
+      <td class="chance">${(q.chance*100).toFixed(0)}% to win</td>
+      <td class="odds">× ${q.multiplier.toFixed(2)}</td>`;
+    tr.addEventListener('click', ()=>{ picked=i; tick(); renderField(); renderSlip(); });
+    tb.appendChild(tr);
+  });
+  $('race-no').textContent = 'race ' + fmt(raceNo+1);
+}
+function stakeVal(){
+  const v = Math.floor(Number($('stake').value));
+  return Number.isFinite(v)&&v>0 ? v : 0;
+}
+function renderSlip(){
+  const st = stakeVal();
+  $('ret-boat').textContent = BOATS[picked].name;
+  $('ret-amt').textContent = st>0 ? fmt(quote(picked, st).payout)+' 🪙' : '—';
+  const btn = $('bet-btn');
+  const blocked = racing || !!pending;
+  btn.disabled = blocked || st<=0 || st>purse;
+  btn.textContent =
+    pending ? '⚓ Waiting on the tide…' :
+    racing ? 'Racing…' :
+    st>purse ? 'Not enough doubloons' :
+    mode==='tide' ? '⚓ Bet on the next block' : 'Place bet & start';
+  $('tide-note').style.display = pending ? 'block' : 'none';
+  if(pending) $('tide-block').textContent = fmt(pending.height);
+  $('mode-hint').textContent = mode==='tide'
+    ? 'The next testnet4 block seeds the race — nobody knows the winner yet. Verifiable by anyone, forever.'
+    : 'Practice races are seeded locally and run at once — pure fun, not provable.';
+}
+function renderLog(){
+  $('log-count').textContent = log.length ? `${log.length} race${log.length>1?'s':''}` : '';
+  $('log-empty').style.display = log.length ? 'none':'block';
+  $('log').style.display = log.length ? 'table':'none';
+  const tb = $('log').querySelector('tbody'); tb.innerHTML='';
+  for(const r of log){
+    const tr = document.createElement('tr');
+    const proof = r.mode==='tide'
+      ? `<a class="verify-link" href="https://mempool.space/testnet4/block/${r.blockHash}" target="_blank" rel="noopener">block ${fmt(r.height)}</a>
+         · <a href="#" class="verify-link" data-verify="${r.n}">verify ✓</a>`
+      : `<span class="tag">practice</span>`;
+    tr.innerHTML = `
+      <td>#${r.n} ${r.mode==='tide'?'<span class="tag tide">⚓ tide</span>':''}</td>
+      <td><span class="swatch" style="background:${HULLS[BOATS[r.boat].key]}"></span> ${BOATS[r.boat].name}</td>
+      <td>${fmt(r.stake)}</td>
+      <td>${BOATS[r.winner].name}</td>
+      <td class="${r.delta>=0?'delta-win':'delta-lose'}">${r.delta>=0?'+':''}${fmt(r.delta)}</td>
+      <td>${proof}</td>`;
+    tb.appendChild(tr);
+  }
+  tb.querySelectorAll('[data-verify]').forEach((a)=> a.addEventListener('click', async (e)=>{
+    e.preventDefault();
+    const r = log.find((x)=>String(x.n)===a.dataset.verify);
+    const seed = await sha256hex(r.blockHash + '|' + r.mark);
+    const roll = rollFromHash(seed);
+    const winner = winnerIndex(roll);
+    const okV = roll===r.roll && winner===r.winner;
+    a.textContent = okV ? 'verified ✓' : 'MISMATCH ✗';
+    a.style.color = okV ? 'var(--win)' : 'var(--lose)';
+    a.title = `sha256(block|mark) → roll ${roll} → ${BOATS[winner].name}`;
+  }));
+}
+function renderAll(){ renderHeader(); renderField(); renderSlip(); renderLog(); }
+
+/* ---------------- events ---------------- */
+$('mode').addEventListener('click',(e)=>{
+  const b = e.target.closest('button'); if(!b) return;
+  mode = b.dataset.mode; tick();
+  $('mode').querySelectorAll('button').forEach((x)=>x.classList.toggle('on', x===b));
+  if(mode==='tide') fetchTip().catch(()=>{});
+  renderSlip();
+});
+$('stake').addEventListener('input', renderSlip);
+document.querySelector('.quick').addEventListener('click',(e)=>{
+  const b=e.target.closest('button'); if(!b) return;
+  $('stake').value = b.dataset.q==='max' ? Math.max(1,purse) : b.dataset.q;
+  tick(); renderSlip();
+});
+$('bet-btn').addEventListener('click', async ()=>{
+  const st = stakeVal(); if(st<=0||st>purse||racing||pending) return;
+  ac().resume?.();
+  if(mode==='tide'){ try{ await tideBet(picked, st); }catch{ showBanner('The tide is out of reach','Could not reach the chain — check your connection and try again.'); } }
+  else practiceRace(picked, st);
+});
+$('sound-btn').addEventListener('click',()=>{ soundOn=!soundOn; save(LS.sound,soundOn); renderHeader(); if(soundOn) tick(); });
+
+/* ---------------- boot ---------------- */
+if(purse<=0 && !pending){ purse = 1000; save(LS.purse, purse); }  // quietly refloat a broke sailor
+renderAll();
+fetchTip().catch(()=>{ $('tide-height').textContent='offline'; });
+if(pending) { renderSlip(); watchTide(); }
+</script>
+</body>
+</html>
