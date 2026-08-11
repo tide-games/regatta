@@ -293,6 +293,7 @@ import { BOATS, WEIGHT_SPACE, rollFromHash, winnerIndex, quote, settle, raceTrac
 // battle against the sea), then the categorical set the swatches share.
 const HULLS = { tern:'#1a3a7e', gull:'#d29b12', heron:'#2e7d55', petrel:'#7a4fbf', albatross:'#c94f4f' };
 const SAILNO = { tern:'no. 7', gull:'no. 12', heron:'no. 3', petrel:'no. 21', albatross:'no. 88' };
+const NUM = { tern:'7', gull:'12', heron:'3', petrel:'21', albatross:'88' };
 const LS = {
   purse:'regatta-purse', log:'regatta-log', pending:'regatta-pending',
   sound:'regatta-sound', races:'regatta-races',
@@ -418,6 +419,8 @@ const X0 = 78, X1 = W - 86;
 let t0 = performance.now();
 let confetti = [];
 let shake = 0;                     // px of screen shake, decays
+let pulse = null;                  // {i, t0}: expanding ring at the just-picked boat
+const firePulse = (i) => { pulse = { i, t0: performance.now() }; };
 const idleBob = BOATS.map((_,i)=>Math.random()*7);
 
 /* The race state machine. All positions derive from wall-clock time so a
@@ -656,9 +659,35 @@ function drawBoat(i, x, y, t, speed, flip){
   // jib highlight (sun side)
   ctx.fillStyle='rgba(255,255,255,.25)';
   ctx.beginPath(); ctx.moveTo(3,-34); ctx.quadraticCurveTo(12,-16,17,4); ctx.lineTo(3,2); ctx.closePath(); ctx.fill();
-  // pennant
-  ctx.fillStyle=hull;
-  ctx.beginPath(); ctx.moveTo(2,-42); ctx.lineTo(12,-39.5); ctx.lineTo(2,-37); ctx.fill();
+  // sail number painted on the jib — the race card's "no. 7" made visible on
+  // the water, so card rows map to boats without translating colors. (Skipped
+  // while mirrored for the sail-back: text must never render backwards.)
+  if(!flip){
+    ctx.font='700 11px system-ui,sans-serif';
+    ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.lineJoin='round';
+    ctx.strokeStyle='rgba(30,40,50,.45)'; ctx.lineWidth=2.5;
+    ctx.strokeText(NUM[BOATS[i].key], 16, -5);
+    ctx.fillStyle='#fdfbf4';
+    ctx.fillText(NUM[BOATS[i].key], 16, -5);
+    ctx.textAlign='start'; ctx.textBaseline='alphabetic';
+  }
+  if(i===picked && !flip){
+    // the YOU pennant — words, not decoration. A first-time user should find
+    // their boat in two seconds without decoding rings or colors.
+    const wv = Math.sin(t*0.006+i)*1.2;
+    ctx.fillStyle='#f7f1e3';
+    ctx.beginPath(); ctx.moveTo(3,-41); ctx.quadraticCurveTo(17,-42+wv,31,-40.5);
+    ctx.lineTo(31,-29); ctx.quadraticCurveTo(17,-30.5+wv,3,-30); ctx.closePath();
+    ctx.fill(); ctx.strokeStyle='rgba(30,40,50,.45)'; ctx.lineWidth=1.2; ctx.stroke();
+    ctx.fillStyle='#232e38'; ctx.font='800 9px system-ui,sans-serif';
+    ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillText('YOU', 17, -34.8+wv*0.5);
+    ctx.textAlign='start'; ctx.textBaseline='alphabetic';
+  } else {
+    // pennant
+    ctx.fillStyle=hull;
+    ctx.beginPath(); ctx.moveTo(2,-42); ctx.lineTo(12,-39.5); ctx.lineTo(2,-37); ctx.fill();
+  }
   ctx.restore();
 }
 function hexA(hex, a){
@@ -744,6 +773,20 @@ function frame(now){
   drawCourse(now);
   const flip = R.phase==='toline';
   BOATS.forEach((_,i)=> drawBoat(i, boatX(positions[i]), laneY(i), t, smoothV[i], flip));
+  // pick pulse: one expanding ring at the just-picked boat, teaching the
+  // race-card → water mapping at the exact moment the choice is made
+  if(pulse){
+    const age = now - pulse.t0;
+    if(age > 700){ pulse = null; }
+    else {
+      const u = age/700, r = 26 + u*55;
+      ctx.strokeStyle = hexA(HULLS[BOATS[pulse.i].key], 0.85*(1-u));
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.ellipse(boatX(positions[pulse.i]), laneY(pulse.i)+4, r, r*0.35, 0, 0, 7);
+      ctx.stroke();
+    }
+  }
   drawConfetti(dt);
   ctx.restore();
   if(Math.random()<0.003) gull();
@@ -921,7 +964,7 @@ function renderField(){
       <td><span class="bname">${b.name}</span><span class="sail-no">${SAILNO[b.key]}</span></td>
       <td class="chance">${(q.chance*100).toFixed(0)}%</td>
       <td class="odds">× ${q.multiplier.toFixed(2)}</td>`;
-    const pick = ()=>{ picked=i; tick(); renderField(); renderSlip(); tb.querySelector('.pick')?.focus(); };
+    const pick = ()=>{ picked=i; tick(); firePulse(i); renderField(); renderSlip(); tb.querySelector('.pick')?.focus(); };
     tr.addEventListener('click', pick);
     tr.addEventListener('keydown', (e)=>{
       if(e.key===' '||e.key==='Enter'){ e.preventDefault(); pick(); }
@@ -930,7 +973,7 @@ function renderField(){
         if(e.key==='Home') picked = 0;
         else if(e.key==='End') picked = BOATS.length-1;
         else picked = (picked + (e.key==='ArrowDown'||e.key==='ArrowRight'?1:BOATS.length-1)) % BOATS.length;
-        tick(); renderField(); renderSlip(); tb.querySelector('.pick')?.focus();
+        tick(); firePulse(picked); renderField(); renderSlip(); tb.querySelector('.pick')?.focus();
       }
     });
     tb.appendChild(tr);
@@ -1041,6 +1084,7 @@ $('sound-btn').addEventListener('click',()=>{ soundOn=!soundOn; save(LS.sound,so
 /* ---------------- boot ---------------- */
 if(purse<=0 && !pending){ purse = 1000; save(LS.purse, purse); }  // quietly refloat a broke sailor
 renderAll();
+firePulse(picked); // show a first-time visitor which boat is theirs, unprompted
 fetchTip().catch(()=>{ $('tide-height').textContent='offline'; });
 if(pending) { renderSlip(); watchTide(); }
 </script>
