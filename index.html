@@ -24,7 +24,7 @@
     min-height:100vh;
   }
   .wrap{max-width:1060px;margin:0 auto;padding:14px 16px 40px}
-  :focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:4px}
+  :focus-visible{outline:2px solid var(--accent);outline-offset:2px}
   .ic{width:1em;height:1em;vertical-align:-0.125em;fill:currentColor}
 
   /* ---------- header ---------- */
@@ -52,7 +52,7 @@
   }
   canvas{display:block;width:100%;height:auto}
   #scrim{
-    position:absolute;inset:0;background:rgba(18,48,66,.28);opacity:0;
+    position:absolute;inset:0;background:rgba(18,48,66,.35);opacity:0;
     transition:opacity .3s ease;pointer-events:none;
   }
   #scrim.show{opacity:1}
@@ -141,7 +141,7 @@
   }
   #bet-btn:hover{filter:brightness(1.06)}
   #bet-btn:active{transform:translateY(1px)}
-  #bet-btn:disabled{background:#c9c2b2;box-shadow:none;cursor:default}
+  #bet-btn:disabled{background:#c9c2b2;color:#6d6455;box-shadow:none;cursor:default}
   .mode{display:flex;border:1px solid var(--line);border-radius:10px;overflow:hidden}
   .mode button{
     flex:1;display:flex;align-items:center;justify-content:center;gap:6px;
@@ -257,7 +257,10 @@
       <i>mark</i> is a random nonce fixed at bet time. The seed picks a number on a 10,000-point
       line; each boat owns a band of it sized by its odds. Nobody — not you, not this page, not
       anyone — knows the winner before the tide comes in, and anyone can recompute it afterwards
-      from public chain data. The <b>verify ✓</b> in the log does exactly that, in your browser.</p>
+      from public chain data. The <b>verify ✓</b> in the log does exactly that, in your browser.
+      Races settle only after the deciding block has a confirmation on top of it — testnet4
+      reorgs are real (we watched one orphan a race's block), and if a deeper reorg ever moves
+      a settled block, verify says so instead of pretending.</p>
       <p>Even the race replay is honest: every gust and stall is drawn from the same seed, so two
       replays of the same race are identical, anywhere.</p>
       <p>Practice mode is seeded locally and marked as such — instant, but not provable.</p>
@@ -335,6 +338,13 @@ function tick(freq=1568, peak=0.03){
   const o=c.createOscillator(), g=c.createGain(); o.type='square'; o.frequency.value=freq;
   o.connect(g); g.connect(c.destination); env(g,t,0.005,peak,0.05); o.start(t); o.stop(t+0.08);
 }
+// The gun at the gun: one low percussive hit when the winner crosses.
+function thump(){
+  if(!soundOn) return; const c=ac(), t=c.currentTime;
+  const o=c.createOscillator(), g=c.createGain(); o.type='sine';
+  o.frequency.setValueAtTime(110,t); o.frequency.exponentialRampToValueAtTime(55,t+0.18);
+  o.connect(g); g.connect(c.destination); env(g,t,0.008,0.22,0.28); o.start(t); o.stop(t+0.35);
+}
 // The tension bed: looped filtered noise whose gain and brightness track the
 // race — a quiet wash off the line, rising through the final third.
 let bed = null;
@@ -342,10 +352,16 @@ function startBed(){
   if(!soundOn) return;
   try{
     const c = ac();
-    const len = c.sampleRate * 2;
+    const len = c.sampleRate * 4;
     const buf = c.createBuffer(1, len, c.sampleRate);
     const d = buf.getChannelData(0);
     for(let i=0;i<len;i++) d[i] = Math.random()*2-1;
+    // soften the loop seam: 30ms cosine fades at both ends
+    const fade = Math.floor(c.sampleRate * 0.03);
+    for(let i=0;i<fade;i++){
+      const w = 0.5 - 0.5*Math.cos(Math.PI*i/fade);
+      d[i] *= w; d[len-1-i] *= w;
+    }
     const src = c.createBufferSource(); src.buffer = buf; src.loop = true;
     const bp = c.createBiquadFilter(); bp.type='bandpass'; bp.frequency.value=420; bp.Q.value=0.7;
     const g = c.createGain(); g.gain.value = 0.0001;
@@ -382,7 +398,9 @@ function ctxFor(canvas){
 }
 const SHORE = 74;
 const LANES = BOATS.length;
-const LANE0 = SHORE + 66, LANEH = (H - LANE0 - 38) / (LANES - 1);
+// Lane 0 sits low enough that a masthead never climbs onto the shore, and
+// lane spacing exceeds mast height so no pennant bleeds into the lane above.
+const LANE0 = SHORE + 86, LANEH = (H - LANE0 - 36) / (LANES - 1);
 const X0 = 78, X1 = W - 86;
 let t0 = performance.now();
 let confetti = [];
@@ -424,7 +442,7 @@ function positionsNow(now){
       });
     }
     case 'count': return BOATS.map(()=>0);
-    case 'race':  { bedProgress(u); return traceAt(warp(u)); }
+    case 'race':  return traceAt(warp(u));
     case 'coast': {
       // Winner coasts through the line; the beaten fleet trickles in.
       return BOATS.map((_,i)=>{
@@ -464,10 +482,14 @@ function drawSky(t){
   // surf line where land meets water
   ctx.strokeStyle='rgba(255,255,255,.5)'; ctx.lineWidth=2;
   ctx.beginPath(); ctx.moveTo(0,SHORE+42); ctx.quadraticCurveTo(W*0.5,SHORE+50,W,SHORE+44); ctx.stroke();
-  // lighthouse on the point
-  ctx.fillStyle='#e8e2d2'; ctx.fillRect(W*0.18-5, SHORE-38, 10, 30);
-  ctx.fillStyle='#c94f4f'; ctx.fillRect(W*0.18-5, SHORE-38, 10, 7); ctx.fillRect(W*0.18-5, SHORE-22, 10, 6);
-  ctx.fillStyle='#3d4a55'; ctx.fillRect(W*0.18-7, SHORE-42, 14, 5);
+  // lighthouse on the point — outlined and seated so its bands don't
+  // dissolve into the pale sky
+  const lx = W*0.18;
+  ctx.fillStyle='#ddd6c4'; ctx.fillRect(lx-5, SHORE-38, 10, 34);
+  ctx.fillStyle='#c94f4f'; ctx.fillRect(lx-5, SHORE-38, 10, 7); ctx.fillRect(lx-5, SHORE-22, 10, 6);
+  ctx.fillStyle='#3d4a55'; ctx.fillRect(lx-7, SHORE-42, 14, 5);
+  ctx.strokeStyle='rgba(61,74,85,.55)'; ctx.lineWidth=1;
+  ctx.strokeRect(lx-5.5, SHORE-38.5, 11, 34.5);
 }
 function drawSea(t){
   // Depth-bent gradient: pale at the horizon, deepening toward the viewer.
@@ -479,7 +501,7 @@ function drawSea(t){
   for(let i=0;i<3;i++){
     const cx = ((t*0.012 + i*430)%(W+360))-180, cy = SHORE+120+i*90;
     const cg = ctx.createRadialGradient(cx,cy,10,cx,cy,150);
-    cg.addColorStop(0,'rgba(255,255,255,.10)'); cg.addColorStop(1,'rgba(255,255,255,0)');
+    cg.addColorStop(0,'rgba(255,255,255,.16)'); cg.addColorStop(1,'rgba(255,255,255,0)');
     ctx.fillStyle=cg; ctx.beginPath(); ctx.arc(cx,cy,150,0,7); ctx.fill();
   }
   // three wave bands — spacing, weight and alpha all grow toward the viewer
@@ -507,15 +529,30 @@ function drawSea(t){
     if(Math.sin(t*0.004+i*2.4)>0.6) ctx.fillRect(x,y,2.5,1.4);
   }
 }
-function drawCourse(){
-  ctx.strokeStyle='rgba(255,255,255,.7)'; ctx.setLineDash([7,7]); ctx.lineWidth=2;
+function drawCourse(now){
+  // The countdown made visible: the start line pulses through the count and
+  // flashes white on the gun frame — sound-off players get the same beats.
+  let lineStyle='rgba(255,255,255,.7)', lineW=2;
+  if(R.phase==='count'){
+    const cu=(now-R.start)/R.dur;
+    lineStyle=`rgba(255,255,255,${0.55+0.35*Math.abs(Math.sin(cu*Math.PI*2))}`+')';
+  } else if(R.phase==='race' && now-R.start<350){
+    lineStyle='rgba(255,255,255,.95)'; lineW=4;
+  }
+  ctx.strokeStyle=lineStyle; ctx.setLineDash([7,7]); ctx.lineWidth=lineW;
   ctx.beginPath(); ctx.moveTo(X0,LANE0-38); ctx.lineTo(X0,H-14); ctx.stroke();
   // finish line: quiet dashed line + a committee flag; checkers live on the flag,
   // not a full-height wall that swallows the finishers.
   ctx.strokeStyle='rgba(255,255,255,.55)';
   ctx.beginPath(); ctx.moveTo(X1,LANE0-38); ctx.lineTo(X1,H-14); ctx.stroke();
   ctx.setLineDash([]);
-  flag(X0,LANE0-46,'#1e6f8e');
+  // The start flag dips on each countdown tick and lifts on the gun.
+  let flagDip = 0;
+  if(R.phase==='count'){
+    const ms=(now-R.start)%900;
+    flagDip = ms<250 ? 8*(1-ms/250) : 0;
+  }
+  flag(X0,LANE0-46+flagDip,'#1e6f8e');
   checkerFlag(X1, LANE0-52);
   // lane buoys: fewer, bigger, two-tone, bobbing
   const t = performance.now();
@@ -549,13 +586,19 @@ function checkerFlag(x,y){
     ctx.fillRect(x+c*5.5, y+r*5+ (c*w/4), 5.5, 5);
   }
 }
-/* Boats: the stars. ~1.7× the original scale, identity color on the MAINSAIL
-   (sail area is 10× hull area — recognition at a glance), dark outline for
-   separation, contact shadow + broken reflection to seat them in the water. */
-function drawBoat(i, x, y, t, speed){
+/* Boats: the stars. The IDENTITY COLOR is on the JIB — the big foretriangle
+   that dominates the silhouette — so recognition happens at sail range, not
+   hull range. Mast shortened so no pennant bleeds into the lane above.
+   flip mirrors the boat for the ceremonial sail back to the line. */
+function drawBoat(i, x, y, t, speed, flip){
   const hull = HULLS[BOATS[i].key];
   const bob = Math.sin(t*0.003 + idleBob[i])*2.2;
   const heel = Math.min(0.28, 0.04 + speed*1.6);
+  // your-boat marker: a halo ring on the waterline, part of the scene
+  if(i===picked){
+    ctx.strokeStyle=hexA(hull, 0.65); ctx.lineWidth=2.5;
+    ctx.beginPath(); ctx.ellipse(x, y+bob+15, 34+Math.sin(t*0.005)*2, 6, 0, 0, 7); ctx.stroke();
+  }
   // contact shadow + broken reflection, drawn unrotated under the boat
   ctx.fillStyle='rgba(20,60,80,.22)';
   ctx.beginPath(); ctx.ellipse(x, y+bob+15, 27, 4.5, 0, 0, 7); ctx.fill();
@@ -564,7 +607,9 @@ function drawBoat(i, x, y, t, speed){
     const ry = y+bob+19+r*4, rw = 16-r*4;
     ctx.fillRect(x-rw/2 + Math.sin(t*0.004 - idleBob[i] + r)*3, ry, rw, 2);
   }
-  ctx.save(); ctx.translate(x, y+bob); ctx.rotate(-heel*0.35);
+  ctx.save(); ctx.translate(x, y+bob);
+  if(flip) ctx.scale(-1,1);
+  ctx.rotate(-heel*0.35);
   ctx.lineWidth=1.5; ctx.strokeStyle='rgba(30,40,50,.35)';
   // wake
   if(speed > 0.06){
@@ -579,32 +624,26 @@ function drawBoat(i, x, y, t, speed){
   ctx.lineTo(23,16); ctx.quadraticCurveTo(0,24,-21,16); ctx.closePath();
   ctx.fill(); ctx.stroke();
   ctx.fillStyle='rgba(0,0,0,.18)'; ctx.fillRect(-21,15,44,3);
-  // mast
+  // mast (short enough that nothing bleeds into the lane above)
   ctx.strokeStyle='#5a5348'; ctx.lineWidth=2.2;
-  ctx.beginPath(); ctx.moveTo(2,8); ctx.lineTo(2,-50); ctx.stroke();
-  // mainsail in the boat's color — the identity, filled by the wind
+  ctx.beginPath(); ctx.moveTo(2,8); ctx.lineTo(2,-42); ctx.stroke();
+  // mainsail, cream — the accent now
   const belly = 4 + Math.min(20, speed*90) + Math.sin(t*0.004+i)*1;
-  ctx.fillStyle=hull;
-  ctx.beginPath(); ctx.moveTo(2,-48); ctx.quadraticCurveTo(2+belly,-22,2,5); ctx.closePath();
+  ctx.fillStyle='#f6f1e2';
+  ctx.beginPath(); ctx.moveTo(2,-40); ctx.quadraticCurveTo(2+belly,-18,2,5); ctx.closePath();
   ctx.fill();
   ctx.strokeStyle='rgba(30,40,50,.35)'; ctx.lineWidth=1.5; ctx.stroke();
-  // sail highlight (sun side)
-  ctx.fillStyle='rgba(255,255,255,.22)';
-  ctx.beginPath(); ctx.moveTo(2,-48); ctx.quadraticCurveTo(2+belly*0.45,-24,2,3); ctx.closePath(); ctx.fill();
-  // jib, cream
-  ctx.fillStyle='#f6f1e2';
-  ctx.beginPath(); ctx.moveTo(3,-40); ctx.quadraticCurveTo(20,-18,31,5); ctx.lineTo(3,2); ctx.closePath();
+  // jib in the boat's color — the big foretriangle IS the identity
+  ctx.fillStyle=hull;
+  ctx.beginPath(); ctx.moveTo(3,-34); ctx.quadraticCurveTo(20,-15,31,5); ctx.lineTo(3,2); ctx.closePath();
   ctx.fill(); ctx.strokeStyle='rgba(30,40,50,.3)'; ctx.stroke();
+  // jib highlight (sun side)
+  ctx.fillStyle='rgba(255,255,255,.25)';
+  ctx.beginPath(); ctx.moveTo(3,-34); ctx.quadraticCurveTo(12,-16,17,4); ctx.lineTo(3,2); ctx.closePath(); ctx.fill();
   // pennant
   ctx.fillStyle=hull;
-  ctx.beginPath(); ctx.moveTo(2,-50); ctx.lineTo(13,-47); ctx.lineTo(2,-44); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(2,-42); ctx.lineTo(12,-39.5); ctx.lineTo(2,-37); ctx.fill();
   ctx.restore();
-  // your-boat chevron, hovering above the masthead
-  if(i===picked){
-    const cy = y+bob-58 + Math.sin(t*0.005)*2;
-    ctx.strokeStyle=hull; ctx.lineWidth=2.5; ctx.lineJoin='round';
-    ctx.beginPath(); ctx.moveTo(x-6,cy-6); ctx.lineTo(x+2,cy); ctx.lineTo(x+10,cy-6); ctx.stroke();
-  }
 }
 function hexA(hex, a){
   const n = parseInt(hex.slice(1), 16);
@@ -621,6 +660,17 @@ function drawConfetti(dt){
     else ctx.fillRect(-p.s/2,-p.s*0.35,p.s,p.s*0.7);
     ctx.restore();
   }
+}
+// Every finish gets a burst at the flag — the race deserves its gun even
+// when your bet doesn't.
+function finishBurst(winnerHull){
+  for(let i=0;i<26;i++) confetti.push({
+    x: X1 + (Math.random()-0.5)*30, y: LANE0-40+Math.random()*20,
+    vx:(Math.random()-0.6)*0.25, vy:-0.15-Math.random()*0.2,
+    vr:(Math.random()-0.5)*0.02, r:Math.random()*6,
+    s: 3+Math.random()*5, round: Math.random()<0.3,
+    c: Math.random()<0.5 ? winnerHull : '#f4f2ea',
+  });
 }
 // Win celebration: a full-width fall from the top edge, 40% in the winner's color.
 function celebrate(winnerHull){
@@ -657,18 +707,27 @@ function frame(now){
   } else { ctx.save(); shake = 0; }
   drawSky(t); drawSea(t);
   const positions = positionsNow(now);
-  // speeds: fraction/sec, smoothed with ~120ms time constant
+  // The visual gates want TRACE-space pace: during the slow-motion final
+  // stretch the warped screen speed collapses below every gate and the whole
+  // fleet luffs at the climax — so divide the wind back out of the measurement.
+  let paceScale = 1;
+  if(R.phase==='race'){
+    const tau = Math.min(1, (now-R.start)/R.dur);
+    paceScale = 1 / (tau < 0.78 ? 0.92/0.78 : 0.08/0.22);
+    bedProgress(tau);
+  }
   if(prevPos){
     const dts = Math.max(1, now - prevT);
     const k = 1 - Math.exp(-dts/120);
     for(let i=0;i<positions.length;i++){
-      const raw = Math.max(0, (positions[i]-prevPos[i]) / dts * 1000);
+      const raw = Math.max(0, (positions[i]-prevPos[i]) / dts * 1000) * paceScale;
       smoothV[i] += (raw - smoothV[i]) * k;
     }
   }
   prevPos = positions.slice(); prevT = now;
-  drawCourse();
-  BOATS.forEach((_,i)=> drawBoat(i, boatX(positions[i]), laneY(i), t, smoothV[i]));
+  drawCourse(now);
+  const flip = R.phase==='toline';
+  BOATS.forEach((_,i)=> drawBoat(i, boatX(positions[i]), laneY(i), t, smoothV[i], flip));
   drawConfetti(dt);
   ctx.restore();
   if(Math.random()<0.003) gull();
@@ -713,17 +772,21 @@ async function runRace({seedHex, boat, stake, tideInfo}){
   R.dur = 10500 + (rollFromHash(seedHex.slice(0,16), 3000)); // 10.5–13.5s, seeded
   await sleep(R.dur);
 
-  /* The gun: winner coasts through, the fleet trickles in. */
+  /* The gun: winner coasts through, the fleet trickles in. Every race gets
+     its gun — thump, a small winner-tinted burst at the flag, a 2px shake;
+     a WIN adds the full-width fall, the big shake, and the fanfare. */
   R.coastFrom = traceAt(1); R.coastV = Array.from(smoothV);
   R.phase='coast'; R.start=now(); R.dur=1600;
-  stopBed(); fanfare(out.won);
+  stopBed(); thump(); fanfare(out.won);
+  finishBurst(HULLS[BOATS[winner].key]);
+  shake = Math.max(shake, 2);
   if(out.won) celebrate(HULLS[BOATS[winner].key]);
   await sleep(500); // let the crossing breathe before the card drops
   showBanner(
     `${BOATS[winner].name} takes the gun!`,
     out.won ? `You backed the winner — <b class="win">${fmtDelta(out.delta)}</b> doubloons`
-            : `Your ${BOATS[boat].name} came home behind — <b class="lose">${fmtDelta(out.delta)}</b>`,
-    out.won,
+            : `Your ${BOATS[boat].name} came home behind: <b class="lose">${fmtDelta(out.delta)}</b> doubloons`,
+    out.won, HULLS[BOATS[winner].key],
   );
   if(out.won) countUpPurse(out.payout);
   await sleep(1100);
@@ -733,10 +796,14 @@ async function runRace({seedHex, boat, stake, tideInfo}){
   renderAll();
 }
 
-function showBanner(head, subHTML, won){
+function showBanner(head, subHTML, won, winnerHull){
   $('banner-head').textContent = head;
   $('banner-sub').innerHTML = subHTML;
-  $('banner-inner').className = 'inner ' + (won===true?'win':won===false?'lose':'');
+  const inner = $('banner-inner');
+  inner.className = 'inner ' + (won===true?'win':won===false?'lose':'');
+  // The card announces the RACE: its rule wears the winner's color; the
+  // win/lose verdict lives in the colored delta line below.
+  inner.style.borderTopColor = winnerHull || '';
   $('banner').classList.add('show');
   $('scrim').classList.add('show');
   clearTimeout(showBanner.t);
@@ -771,14 +838,18 @@ async function fetchTip(){
   $('tide-height').textContent = fmt(tipHeight);
   return tipHeight;
 }
+// height→hash is NOT immutable pre-confirmation: testnet4 reorgs are routine
+// (we watched race #6's deciding block get orphaned live). Only cache a hash
+// once the caller knows it has at least one confirmation; verify always
+// refetches so a reorg is reported, never papered over.
 const blockHashCache = {};
-async function hashAtHeight(h){
-  if(blockHashCache[h]) return blockHashCache[h];
+async function hashAtHeight(h, { cacheOk = false } = {}){
+  if(cacheOk && blockHashCache[h]) return blockHashCache[h];
   const r = await fetch(MEMPOOL + '/block-height/' + h);
   if(r.status===404) return null;
   if(!r.ok) throw new Error('block ' + r.status);
   const hash = (await r.text()).trim();
-  blockHashCache[h] = hash;                    // immutable — cache forever
+  if(cacheOk) blockHashCache[h] = hash;
   return hash;
 }
 async function tideBet(boat, stake){
@@ -795,7 +866,12 @@ async function tideBet(boat, stake){
 let tideTimer = null;
 async function trySettleTide(){
   if(!pending) return false;
-  const hash = await hashAtHeight(pending.height);
+  // Settle only once the deciding block has a confirmation on top of it —
+  // a 0-conf settle can land on a block that reorgs away (seen live: the
+  // first tide race here settled on an orphan).
+  tipAt = 0; const tip = await fetchTip();
+  if(tip < pending.height + 1) return false;
+  const hash = await hashAtHeight(pending.height, { cacheOk: true });
   if(!hash) return false;
   if(tideTimer){ clearInterval(tideTimer); tideTimer = null; }
   const p = pending; pending = null; save(LS.pending, null);
@@ -833,9 +909,11 @@ function renderField(){
     tr.addEventListener('click', pick);
     tr.addEventListener('keydown', (e)=>{
       if(e.key===' '||e.key==='Enter'){ e.preventDefault(); pick(); }
-      if(e.key==='ArrowDown'||e.key==='ArrowUp'){
+      if(['ArrowDown','ArrowRight','ArrowUp','ArrowLeft','Home','End'].includes(e.key)){
         e.preventDefault();
-        picked = (picked + (e.key==='ArrowDown'?1:BOATS.length-1)) % BOATS.length;
+        if(e.key==='Home') picked = 0;
+        else if(e.key==='End') picked = BOATS.length-1;
+        else picked = (picked + (e.key==='ArrowDown'||e.key==='ArrowRight'?1:BOATS.length-1)) % BOATS.length;
         tick(); renderField(); renderSlip(); tb.querySelector('.pick')?.focus();
       }
     });
@@ -853,7 +931,8 @@ function renderSlip(){
   $('ret-amt').innerHTML = st>0
     ? fmt(quote(picked, st).payout)+' <svg class="ic"><use href="#i-coin"/></svg>' : '—';
   document.querySelectorAll('#quick button').forEach((b)=>{
-    b.setAttribute('aria-pressed', String(b.dataset.q === String(st)));
+    const on = b.dataset.q === 'max' ? (st === purse && purse > 0) : b.dataset.q === String(st);
+    b.setAttribute('aria-pressed', String(on));
   });
   const btn = $('bet-btn');
   // A pending tide bet only blocks ANOTHER tide bet — practice stays open.
@@ -889,7 +968,7 @@ function renderLog(){
          · <a href="#" class="verify-link" data-verify="${r.n}">verify ✓</a>`
       : `<span class="tag">practice</span>`;
     tr.innerHTML = `
-      <td>#${r.n} ${r.mode==='tide'?'<span class="tag tide">tide</span>':''}<br><span class="when">${ago(r.at)}</span></td>
+      <td>#${r.n} ${r.mode==='tide'?'<span class="tag tide">tide</span>':''}<br><span class="when" title="${new Date(r.at).toLocaleString()}">${ago(r.at)}</span></td>
       <td><span class="swatch" style="background:${HULLS[BOATS[r.boat].key]}"></span> ${BOATS[r.boat].name}</td>
       <td class="num">${fmt(r.stake)}</td>
       <td>${BOATS[r.winner].name}</td>
@@ -900,6 +979,16 @@ function renderLog(){
   tb.querySelectorAll('[data-verify]').forEach((a)=> a.addEventListener('click', async (e)=>{
     e.preventDefault();
     const r = log.find((x)=>String(x.n)===a.dataset.verify);
+    // Verify against the chain AS IT IS NOW: refetch the canonical hash at
+    // that height, so a reorg is reported honestly rather than papered over.
+    let canonical = null;
+    try{ canonical = await hashAtHeight(r.height); }catch{}
+    if(canonical && canonical !== r.blockHash){
+      a.textContent = 'block reorged ⚠';
+      a.style.color = 'var(--gold)';
+      a.title = 'testnet4 reorged: the block this race settled on is no longer canonical. The maths below verified against the recorded hash; the chain has since moved.';
+      return;
+    }
     const seed = await sha256hex(r.blockHash + '|' + r.mark);
     const roll = rollFromHash(seed);
     const winner = winnerIndex(roll);
