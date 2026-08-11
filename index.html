@@ -428,11 +428,14 @@ function warp(tau){
 }
 function traceAt(q){
   const tr = R.tr;
-  const idx = Math.min(1, q)*(tr.length-1), lo=Math.floor(idx), hi=Math.min(tr.length-1,lo+1), f=idx-lo;
+  // clamp both ends: an rAF timestamp can lag performance.now() by a few ms,
+  // so the first frame after a phase flip can see negative elapsed time
+  const idx = Math.max(0, Math.min(1, q))*(tr.length-1);
+  const lo=Math.floor(idx), hi=Math.min(tr.length-1,lo+1), f=idx-lo;
   return BOATS.map((_,i)=> tr[lo][i]+(tr[hi][i]-tr[lo][i])*f);
 }
 function positionsNow(now){
-  const u = R.dur ? Math.min(1, (now - R.start)/R.dur) : 1;
+  const u = R.dur ? Math.max(0, Math.min(1, (now - R.start)/R.dur)) : 1;
   switch(R.phase){
     case 'toline': {
       // Sail the fleet back to the line, ceremonially, staggered.
