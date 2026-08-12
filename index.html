@@ -54,6 +54,15 @@
   .chip small{font-weight:500;color:var(--ink-soft)}
   .chip.purse{border-color:#dcbf74;background:#fdf8ea}
   .chip.purse .ic{fill:var(--gold)}
+  /* ---------- seal arrival (the Tidegate seam) ---------- */
+  .seal-strip{display:flex;gap:10px;align-items:center;flex-wrap:wrap;
+    border:1px solid #dcbf74;background:#fdf8ea;border-radius:9px;
+    padding:7px 12px;margin:0 0 10px;font-size:13px;color:#6e5006}
+  .seal-strip .ic{fill:#8a6508;flex:none}
+  .seal-strip b{font-variant-numeric:tabular-nums}
+  .seal-strip .sp{flex:1}
+  .seal-strip a{color:#23576d;font-weight:600;text-decoration:none;white-space:nowrap}
+  .seal-strip a:hover{text-decoration:underline}
   button.chip{cursor:pointer;font:inherit;font-weight:600;color:var(--ink)}
   button.chip:hover{border-color:var(--accent)}
 
@@ -215,6 +224,8 @@
     <button class="chip" id="sound-btn" title="sound on/off" aria-label="toggle sound"><svg class="ic" id="sound-ic"><use href="#i-sound"/></svg></button>
   </header>
 
+  <div class="seal-strip" id="seal-strip" hidden></div>
+
   <div class="course-frame">
     <canvas id="sea" width="1028" height="430"></canvas>
     <div id="scrim"></div>
@@ -283,6 +294,49 @@
     pure maths in <a href="regatta.js">regatta.js</a> · house edge 3%, identical for every boat.</p>
   </footer>
 </div>
+
+<script>
+// ---- the Tidegate seam, read-only (baby step) -----------------------------
+// If the player arrived from the fleet lobby with ?did=&seal=&return=, be
+// honest about it: name the sealed purse, link the trail's public verifier,
+// and offer the way home. Same param dialect as the tavern's SEAL parser;
+// nothing here touches the wager machinery — the purse below is practice
+// money and the seal stays sealed until this boat earns its seal-ready badge.
+(function () {
+  const qp = new URLSearchParams(location.search);
+  const did = (qp.get('did') || '').trim().toLowerCase();
+  if (!/^did:nostr:[0-9a-f]{64}$/.test(did)) return;
+  const seal = Math.max(0, Math.floor(Number(qp.get('seal')) || 0));
+  let ret = qp.get('return') || 'https://nostr.social/tideholm/';
+  if (!/^https?:\/\//.test(ret)) ret = 'https://nostr.social/tideholm/';
+  const base = ret.endsWith('/') ? ret : ret + '/';
+  // The trail lives with the home port; the verifier wants the full
+  // <hex>/blocktrails.json spelling (tideholm#152).
+  const verifyHref = 'https://blocktrails.org/verify/?uri=' + encodeURIComponent(
+    base + 'api/tidegate/blocktrails/' + did.slice('did:nostr:'.length) + '/blocktrails.json');
+
+  const el = document.getElementById('seal-strip');
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('class', 'ic');
+  const use = document.createElementNS('http://www.w3.org/2000/svg', 'use');
+  use.setAttribute('href', '#i-anchor');
+  svg.appendChild(use); el.appendChild(svg);
+  const line = document.createElement('span');
+  const bold = document.createElement('b');
+  bold.textContent = seal.toLocaleString('en-US');
+  line.append('Sealed purse ', bold, ' arrived through the Tidegate — this table is practice-only; your seal stays sealed.');
+  el.appendChild(line);
+  const sp = document.createElement('span'); sp.className = 'sp'; el.appendChild(sp);
+  const verify = document.createElement('a');
+  verify.href = verifyHref; verify.target = '_blank'; verify.rel = 'noopener noreferrer';
+  verify.textContent = 'verify trail ↗';
+  el.appendChild(verify);
+  const home = document.createElement('a');
+  home.href = ret; home.textContent = 'return to Tideholm ↩';
+  el.appendChild(home);
+  el.hidden = false;
+})();
+</script>
 
 <script type="module">
 import { BOATS, WEIGHT_SPACE, rollFromHash, winnerIndex, quote, settle, raceTrace }
