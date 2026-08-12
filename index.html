@@ -843,7 +843,10 @@ function frame(now){
   }
   drawConfetti(dt);
   ctx.restore();
-  if(Math.random()<0.003) gull();
+  // One gull per visit. The old 0.3%-per-frame roll cried every ~5s (and
+  // twice as often on 120Hz screens) — ambience that nagged. Now the first
+  // cry retires the bird.
+  if(!gull.done && Math.random()<0.003){ gull.done = true; gull(); }
  }catch(e){ console.log('[regatta] FRAME DIED:', e.message, '|', (e.stack||'').split('\n')[1]); }
   requestAnimationFrame(frame);
 }
