@@ -317,6 +317,8 @@
   const verifyHref = 'https://blocktrails.org/verify/?uri=' + encodeURIComponent(
     base + 'api/tidegate/blocktrails/' + did.slice('did:nostr:'.length) + '/blocktrails.json');
 
+  // the game module reads this to run sealed-mode staking (signed trail moves)
+  window.__SEAL = { did, seal, ret };
   const el = document.getElementById('seal-strip');
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
   svg.setAttribute('class', 'ic');
@@ -324,10 +326,14 @@
   use.setAttribute('href', '#i-anchor');
   svg.appendChild(use); el.appendChild(svg);
   const line = document.createElement('span');
+  line.id = 'seal-line';
   const bold = document.createElement('b');
   bold.textContent = seal.toLocaleString('en-US');
-  line.append('Sealed purse ', bold, ' arrived through the Tidegate — this table is practice-only; your seal stays sealed.');
+  line.append('Sealed purse ', bold, ' arrived through the Tidegate — Tide-mode stakes are signed trail moves; practice races stay play money.');
   el.appendChild(line);
+  const slip = document.createElement('span');
+  slip.id = 'seal-slip';
+  el.appendChild(slip);
   const sp = document.createElement('span'); sp.className = 'sp'; el.appendChild(sp);
   const verify = document.createElement('a');
   verify.href = verifyHref; verify.target = '_blank'; verify.rel = 'noopener noreferrer';
@@ -346,7 +352,8 @@
     cu.setAttribute('href', '#i-anchor');
     cs.appendChild(cu);
     const lbl = document.createElement('small'); lbl.textContent = 'sealed';
-    const amt = document.createElement('span'); amt.textContent = seal.toLocaleString('en-US');
+    const amt = document.createElement('span'); amt.id = 'seal-amt';
+    amt.textContent = seal.toLocaleString('en-US');
     sealChip.append(cs, ' ', lbl, ' ', amt);
     purseChip.parentNode.insertBefore(sealChip, purseChip);
     const purseLbl = purseChip.querySelector('small');
@@ -380,7 +387,75 @@ const MINUS = '−';
 let purse = load(LS.purse, 1000);
 let raceNo = load(LS.races, 0);
 let log = load(LS.log, []);
-let pending = load(LS.pending, null);   // {height, mark, boat, stake, placedAt}
+let pending = load(LS.pending, null);   // {height, mark, boat, stake, placedAt, sealed?}
+
+/* ---------------- sealed mode: the Tidegate seam, now live ----------------
+   Arrived via ?did=&seal=&return= (the strip script parsed it): Tide-mode
+   stakes come from the SEALED purse as signed trail transitions — the
+   tavern's exact segment pattern — and winnings carry home on a slip the
+   house re-derives (bet.venue='regatta', TRAIL.md §3.2). Practice races
+   stay play money; without the params nothing here runs. */
+const SEAL = window.__SEAL || null;
+const SLS = SEAL ? 'regatta-seal-' + SEAL.did.slice(-8) : null;
+function loadSeg(){ try{ const s = JSON.parse(localStorage.getItem(SLS)); if(s && Number.isFinite(s.base) && Array.isArray(s.txs)) return s; }catch{} return { base: SEAL.seal, txs: [] }; }
+function saveSeg(s){ localStorage.setItem(SLS, JSON.stringify(s)); }
+if (SEAL) { const s = loadSeg(); if (!s.txs.length && s.base !== SEAL.seal) saveSeg({ base: SEAL.seal, txs: [] }); } // fresh arrival adopts the gate's number
+const sealPurse = () => { const s = loadSeg(); return s.base + s.txs.reduce((a,t)=>a+t.delta,0); };
+const inSealTide = () => !!SEAL && mode === 'tide';
+const availPurse = () => inSealTide() ? sealPurse() : purse;
+let _sealTools = null;
+async function sealTools(){
+  if (_sealTools) return _sealTools;
+  const base = 'https://melvincarvalho.github.io/tidegate/';
+  const [core, keys] = await Promise.all([import(base + 'tidegate.js'), import(base + 'keys.js')]);
+  const signer = await keys.keySigner(); // prompts for the key once, per origin
+  if (signer.pubkey !== SEAL.did.slice('did:nostr:'.length)) throw new Error('the stored key does not match this identity');
+  _sealTools = { core, signer };
+  return _sealTools;
+}
+async function signSeal(delta, bet){
+  const { core, signer } = await sealTools();
+  const s = loadSeg();
+  const prev = s.base + s.txs.reduce((a,t)=>a+t.delta,0);
+  const t = { did: SEAL.did, prev, delta, next: prev + delta };
+  t.sig = await signer.sign(core.transitionBytes(t));
+  t.pubkey = signer.pubkey;
+  if (bet) t.bet = bet; // evidence rides OUTSIDE the signature (TRAIL.md §3.1)
+  s.txs.push(t); saveSeg(s);
+  renderSealBits();
+  return t;
+}
+const b64url = (s) => btoa(unescape(encodeURIComponent(s))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+function renderSealBits(){
+  if (!SEAL) return;
+  const amt = $('seal-amt'); if (amt) amt.textContent = fmt(sealPurse());
+  const lineB = document.querySelector('#seal-line b'); if (lineB) lineB.textContent = fmt(sealPurse());
+  const slip = $('seal-slip'); if (!slip) return;
+  const s = loadSeg();
+  slip.textContent = '';
+  if (!s.txs.length) return;
+  const net = s.txs.reduce((a,t)=>a+t.delta,0);
+  slip.append(` · slip: ${s.txs.length} signed move${s.txs.length>1?'s':''}, net ${net>=0?'+':''}${fmt(net)} — `);
+  const a = document.createElement('a');
+  a.href = `${SEAL.ret}?tavern=${b64url(JSON.stringify(s.txs))}`;
+  a.textContent = 'settle up ↩';
+  slip.appendChild(a);
+  slip.append(' · ');
+  const wipe = document.createElement('a');
+  wipe.href = '#'; wipe.textContent = 'wipe';
+  wipe.title = 'only after the gate has accepted the slip — a wiped slip is gone';
+  wipe.addEventListener('click', (ev)=>{ ev.preventDefault(); saveSeg({ base: sealPurse(), txs: [] }); renderSealBits(); });
+  slip.appendChild(wipe);
+}
+// A win whose signature failed mid-settle must not evaporate: it is stashed
+// and retried on the next load (the race outcome is already decided fact).
+async function retrySealPayout(){
+  if (!SEAL) return;
+  let r = null; try { r = JSON.parse(localStorage.getItem(SLS + '-retry')); } catch {}
+  if (!r) return;
+  try { await signSeal(r.delta, r.bet); localStorage.removeItem(SLS + '-retry'); }
+  catch { /* still stuck — kept for the next visit */ }
+}
 let soundOn = load(LS.sound, true);
 let picked = 0;
 let mode = 'practice';
@@ -881,7 +956,20 @@ async function runRace({seedHex, boat, stake, tideInfo}){
   // The outcome is decided the moment the seed exists — settle the books
   // BEFORE the theatre, so a reload mid-animation can never eat a stake.
   const out = settle({ boatIndex: boat, stake, roll });
-  purse += out.payout; save(LS.purse, purse);
+  if (tideInfo && tideInfo.sealed) {
+    // sealed race: the win is a signed transition with its evidence; the
+    // stake already left the seal at bet time. A loss signs nothing.
+    if (out.payout > 0) {
+      const bet = { venue: 'regatta', height: tideInfo.height, mark: tideInfo.mark, boat, stake };
+      try { await signSeal(out.payout, bet); }
+      catch (e) {
+        localStorage.setItem(SLS + '-retry', JSON.stringify({ delta: out.payout, bet }));
+        showBanner('Signing hiccup', 'Your win is safe — reload and it signs itself onto the slip.');
+      }
+    }
+  } else {
+    purse += out.payout; save(LS.purse, purse);
+  }
   raceNo++; save(LS.races, raceNo);
   log.unshift({
     n: raceNo, boat, stake, winner, delta: out.delta, roll,
@@ -993,8 +1081,14 @@ async function tideBet(boat, stake){
   const tip = await fetchTip();
   const height = tip + 1;                      // a block nobody has seen
   const mark = randHex(16);
-  purse -= stake; save(LS.purse, purse);
-  pending = { height, mark, boat, stake, placedAt: Date.now() };
+  if (SEAL) {
+    // the stake IS the signed transition — sign first, then commit; a
+    // refused signature must cost nothing
+    await signSeal(-stake, { venue: 'regatta', height, mark, boat, stake });
+  } else {
+    purse -= stake; save(LS.purse, purse);
+  }
+  pending = { height, mark, boat, stake, placedAt: Date.now(), sealed: !!SEAL };
   save(LS.pending, pending);
   renderAll();
   showBanner('The fleet is on the line', `Race sails on block <b>${fmt(height)}</b> — the tide turns in about ten minutes.`);
@@ -1003,6 +1097,12 @@ async function tideBet(boat, stake){
 let tideTimer = null;
 async function trySettleTide(){
   if(!pending) return false;
+  if (pending.sealed && !SEAL) {
+    // a sealed race can only settle where the seal params are — the slip
+    // and signer live behind the Tidegate link, not on a bare visit
+    showBanner('A sealed race is waiting', 'Come back through the Tidegate link to settle it — your stake is signed and safe.');
+    return false;
+  }
   // Settle only once the deciding block has a confirmation on top of it —
   // a 0-conf settle can land on a block that reorgs away (seen live: the
   // first tide race here settled on an orphan).
@@ -1148,13 +1248,13 @@ $('mode').addEventListener('click',(e)=>{
 $('stake').addEventListener('input', renderSlip);
 $('quick').addEventListener('click',(e)=>{
   const b=e.target.closest('button'); if(!b) return;
-  $('stake').value = b.dataset.q==='max' ? Math.max(1,purse) : b.dataset.q;
+  $('stake').value = b.dataset.q==='max' ? Math.max(1,availPurse()) : b.dataset.q;
   tick(); renderSlip();
 });
 $('bet-btn').addEventListener('click', async ()=>{
-  const st = stakeVal(); if(st<=0||st>purse||racing||(mode==='tide'&&pending)) return;
+  const st = stakeVal(); if(st<=0||st>availPurse()||racing||(mode==='tide'&&pending)) return;
   ac().resume?.();
-  if(mode==='tide'){ try{ await tideBet(picked, st); }catch{ showBanner('The tide is out of reach','Could not reach the chain — check your connection and try again.'); } }
+  if(mode==='tide'){ try{ await tideBet(picked, st); }catch(e){ showBanner('The bet did not sail', e && e.message ? e.message : 'Could not reach the chain — check your connection and try again.'); } }
   else practiceRace(picked, st);
 });
 $('sound-btn').addEventListener('click',()=>{ soundOn=!soundOn; save(LS.sound,soundOn); renderHeader(); if(soundOn) tick(); });
@@ -1162,6 +1262,7 @@ $('sound-btn').addEventListener('click',()=>{ soundOn=!soundOn; save(LS.sound,so
 /* ---------------- boot ---------------- */
 if(purse<=0 && !pending){ purse = 1000; save(LS.purse, purse); }  // quietly refloat a broke sailor
 renderAll();
+renderSealBits(); retrySealPayout();
 firePulse(picked); // show a first-time visitor which boat is theirs, unprompted
 fetchTip().catch(()=>{ $('tide-height').textContent='offline'; });
 if(pending) { renderSlip(); watchTide(); }
