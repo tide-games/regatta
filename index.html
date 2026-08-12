@@ -63,6 +63,8 @@
   .seal-strip .sp{flex:1}
   .seal-strip a{color:#23576d;font-weight:600;text-decoration:none;white-space:nowrap}
   .seal-strip a:hover{text-decoration:underline}
+  .chip.seal{border-color:#c9a24b;background:#fbf3dd;color:#6e5006}
+  .chip.seal .ic{fill:#8a6508}
   button.chip{cursor:pointer;font:inherit;font-weight:600;color:var(--ink)}
   button.chip:hover{border-color:var(--accent)}
 
@@ -331,6 +333,25 @@
   verify.href = verifyHref; verify.target = '_blank'; verify.rel = 'noopener noreferrer';
   verify.textContent = 'verify trail ↗';
   el.appendChild(verify);
+  // The header answers "what's my tide balance?" at a glance: a sealed chip
+  // beside the purse, and the purse relabeled to say what it really is here.
+  const purseChip = document.querySelector('.chip.purse');
+  if (purseChip) {
+    const sealChip = document.createElement('span');
+    sealChip.className = 'chip seal';
+    sealChip.title = 'your sealed balance in the tide — untouched at this table';
+    const cs = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    cs.setAttribute('class', 'ic');
+    const cu = document.createElementNS('http://www.w3.org/2000/svg', 'use');
+    cu.setAttribute('href', '#i-anchor');
+    cs.appendChild(cu);
+    const lbl = document.createElement('small'); lbl.textContent = 'sealed';
+    const amt = document.createElement('span'); amt.textContent = seal.toLocaleString('en-US');
+    sealChip.append(cs, ' ', lbl, ' ', amt);
+    purseChip.parentNode.insertBefore(sealChip, purseChip);
+    const purseLbl = purseChip.querySelector('small');
+    if (purseLbl) purseLbl.textContent = 'practice';
+  }
   const home = document.createElement('a');
   home.href = ret; home.textContent = 'return to Tideholm ↩';
   el.appendChild(home);
