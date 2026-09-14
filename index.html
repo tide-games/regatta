@@ -381,7 +381,13 @@ const LS = {
   sound:'regatta-sound', races:'regatta-races',
 };
 const $ = (id) => document.getElementById(id);
-const MEMPOOL = 'https://mempool.space/testnet4/api';
+// The fleet's own explorer. mempool.guide serves testnet4 over the same API
+// the till and the DAO's book already read, so the whole fleet asks one node
+// what the tide is doing. The seed is the block hash itself — consensus data,
+// the same on any honest explorer — so the source is a convenience, never the
+// trust: a verifier can recompute a race from any node that has the block.
+const EXPLORER = 'https://mempool.guide/testnet4';
+const MEMPOOL = EXPLORER + '/api';
 const MINUS = '−';
 
 let purse = load(LS.purse, 1000);
@@ -1071,11 +1077,17 @@ const blockHashCache = {};
 async function hashAtHeight(h, { cacheOk = false } = {}){
   if(cacheOk && blockHashCache[h]) return blockHashCache[h];
   const r = await fetch(MEMPOOL + '/block-height/' + h);
-  if(r.status===404) return null;
-  if(!r.ok) throw new Error('block ' + r.status);
-  const hash = (await r.text()).trim();
-  if(cacheOk) blockHashCache[h] = hash;
-  return hash;
+  // A height nobody has mined yet is not an error, and explorers disagree on
+  // how to say so: mempool.space answers 404, mempool.guide a 500 carrying a
+  // JSON complaint. The only answer worth keeping is 64 hex characters; any
+  // other shape means "not yet", and the caller simply asks again later.
+  const body = r.ok ? (await r.text()).trim() : '';
+  if(/^[0-9a-f]{64}$/i.test(body)){
+    if(cacheOk) blockHashCache[h] = body;
+    return body;
+  }
+  if(r.status===404 || r.status>=500) return null;
+  throw new Error('block ' + r.status);
 }
 async function tideBet(boat, stake){
   const tip = await fetchTip();
@@ -1201,7 +1213,7 @@ function renderLog(){
   for(const r of log){
     const tr = document.createElement('tr');
     const proof = r.mode==='tide'
-      ? `<a class="verify-link" href="https://mempool.space/testnet4/block/${r.blockHash}" target="_blank" rel="noopener">block ${fmt(r.height)}</a>
+      ? `<a class="verify-link" href="${EXPLORER}/block/${r.blockHash}" target="_blank" rel="noopener">block ${fmt(r.height)}</a>
          · <a href="#" class="verify-link" data-verify="${r.n}">verify ✓</a>`
       : `<span class="tag">practice</span>`;
     tr.innerHTML = `
