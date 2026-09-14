@@ -221,7 +221,7 @@
     <h1><svg class="ic"><use href="#i-burgee"/></svg>THE REGATTA</h1>
     <span class="tagline">the next tide runs the race</span>
     <span class="spacer"></span>
-    <span class="chip" id="tide-chip" title="Bitcoin testnet4 tip"><svg class="ic" style="fill:var(--accent)"><use href="#i-wave"/></svg> <small>tide</small> <span id="tide-height">—</span></span>
+    <span class="chip" id="tide-chip" title="Blake testnet4 tip — the BLAKE2b fork, on mempool.guide"><svg class="ic" style="fill:var(--accent)"><use href="#i-wave"/></svg> <small>tide</small> <span id="tide-height">—</span></span>
     <span class="chip purse"><svg class="ic"><use href="#i-coin"/></svg> <small>purse</small> <span id="purse">0</span></span>
     <button class="chip" id="sound-btn" title="sound on/off" aria-label="toggle sound"><svg class="ic" id="sound-ic"><use href="#i-sound"/></svg></button>
   </header>
@@ -278,7 +278,14 @@
   <footer>
     <details>
       <summary>Provably fair — how the tide decides</summary>
-      <p>In <b>Tide</b> mode your bet names a Bitcoin (testnet4) block that does not exist yet.
+      <p>The tide is <b>Blake's testnet4</b> — the BLAKE2b hardfork of Bitcoin, which parted from
+      plain testnet4 at block <b>150,308</b>. From there a header is 164 bytes and a block hash is
+      BLAKE2b rather than double-SHA256, and
+      <a href="https://mempool.guide/testnet4" target="_blank" rel="noopener">mempool.guide</a> is
+      the explorer that follows it. Which chain matters to the proof: above the fork the same
+      height names a different block on plain testnet4, so check a race on Blake or you will be
+      comparing against another chain's history.</p>
+      <p>In <b>Tide</b> mode your bet names a Blake block that does not exist yet.
       When that block is mined, the race seed is <code>sha256(blockHash | mark)</code> — your
       <i>mark</i> is a random nonce fixed at bet time. The seed picks a number on a 10,000-point
       line; each boat owns a band of it sized by its odds. Nobody — not you, not this page, not
@@ -286,7 +293,9 @@
       from public chain data. The <b>verify ✓</b> in the log does exactly that, in your browser.
       Races settle only after the deciding block has a confirmation on top of it — testnet4
       reorgs are real (we watched one orphan a race's block), and if a deeper reorg ever moves
-      a settled block, verify says so instead of pretending.</p>
+      a settled block, verify says so instead of pretending. Races logged before the fleet moved
+      to Blake are marked as the plain-testnet4 races they were, and still verify against the
+      chain they settled on.</p>
       <p>Even the race replay is honest: every gust and stall is drawn from the same seed, so two
       replays of the same race are identical, anywhere.</p>
       <p>Practice mode is seeded locally and marked as such — instant, but not provable.</p>
@@ -381,12 +390,22 @@ const LS = {
   sound:'regatta-sound', races:'regatta-races',
 };
 const $ = (id) => document.getElementById(id);
-// The fleet's own explorer. mempool.guide serves testnet4 over the same API
-// the till and the DAO's book already read, so the whole fleet asks one node
-// what the tide is doing. The seed is the block hash itself — consensus data,
-// the same on any honest explorer — so the source is a convenience, never the
-// trust: a verifier can recompute a race from any node that has the block.
+// The tide is Blake's testnet4: the BLAKE2b hardfork of Bitcoin, which parted
+// from testnet4 at height 150308 — from there a block's header is 164 bytes and
+// its hash is BLAKE2b, not double-SHA256. mempool.guide is the chain's explorer
+// and serves it over the same esplora API the till and the DAO's book read.
+//
+// Which chain is part of the proof, not a detail: heights below 150308 are
+// shared with plain testnet4, so a verifier sent to the wrong explorer would
+// find a different block above the fork. The seed is still the block hash as
+// the chain states it — consensus data, the same from any node following Blake.
+const CHAIN = 'blake-testnet4';
+const FORK_HEIGHT = 150308;                                // first BLAKE2b block
 const EXPLORER = 'https://mempool.guide/testnet4';
+const LEGACY_EXPLORER = 'https://mempool.space/testnet4';  // pre-fork races
+// Below the fork the two chains are the same history, so either explorer can
+// answer for an old race; above it, only the chain the race actually settled on.
+const onBlake = (r) => r.chain===CHAIN || r.height < FORK_HEIGHT;
 const MEMPOOL = EXPLORER + '/api';
 const MINUS = '−';
 
@@ -982,6 +1001,9 @@ async function runRace({seedHex, boat, stake, tideInfo}){
     mode: tideInfo? 'tide':'practice',
     height: tideInfo?.height ?? null, mark: tideInfo?.mark ?? null,
     blockHash: tideInfo?.blockHash ?? null, at: Date.now(),
+    // Which chain settled this race. Entries logged before the fleet moved to
+    // Blake carry no stamp, and are read as the plain testnet4 races they were.
+    chain: tideInfo ? CHAIN : undefined,
   });
   log = log.slice(0, 60); save(LS.log, log);
 
@@ -1213,7 +1235,7 @@ function renderLog(){
   for(const r of log){
     const tr = document.createElement('tr');
     const proof = r.mode==='tide'
-      ? `<a class="verify-link" href="${EXPLORER}/block/${r.blockHash}" target="_blank" rel="noopener">block ${fmt(r.height)}</a>
+      ? `<a class="verify-link" href="${(onBlake(r)?EXPLORER:LEGACY_EXPLORER)}/block/${r.blockHash}" target="_blank" rel="noopener">block ${fmt(r.height)}</a>
          · <a href="#" class="verify-link" data-verify="${r.n}">verify ✓</a>`
       : `<span class="tag">practice</span>`;
     tr.innerHTML = `
@@ -1230,8 +1252,11 @@ function renderLog(){
     const r = log.find((x)=>String(x.n)===a.dataset.verify);
     // Verify against the chain AS IT IS NOW: refetch the canonical hash at
     // that height, so a reorg is reported honestly rather than papered over.
+    // Only Blake can answer for a Blake race: heights above the fork mean a
+    // different block on plain testnet4, so an older race is checked on its
+    // own maths alone rather than accused of a reorg it never had.
     let canonical = null;
-    try{ canonical = await hashAtHeight(r.height); }catch{}
+    if(onBlake(r)){ try{ canonical = await hashAtHeight(r.height); }catch{} }
     if(canonical && canonical !== r.blockHash){
       a.textContent = 'block reorged ⚠';
       a.style.color = 'var(--gold)';

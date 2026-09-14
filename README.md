@@ -1,9 +1,12 @@
 # The Regatta ⛵
 
-**Bet on the boats. The next Bitcoin block runs the race.**
+**Bet on the boats. The next Blake block runs the race.**
 
-Five boats, posted odds, one course. In **⚓ Tide** mode your bet names a
-testnet4 block that does not exist yet; when it is mined, the race seed is
+Five boats, posted odds, one course. The tide is **Blake's testnet4** — the
+BLAKE2b hardfork of Bitcoin, which parted from plain testnet4 at block 150308
+and is served by [mempool.guide](https://mempool.guide/testnet4). In **⚓ Tide**
+mode your bet names a Blake block that does not exist yet; when it is mined,
+the race seed is
 `sha256(blockHash | mark)` — so nobody, not even this page, knows the winner
 before the tide comes in, and anyone can recompute it afterwards from public
 chain data. Even the race replay is honest: every gust and stall is drawn from
