@@ -83,6 +83,8 @@
   .seal-strip a:hover{text-decoration:underline}
   .chip.seal{border-color:var(--chip-purse-line);background:var(--chip-purse);color:var(--gold)}
   .chip.seal .ic{fill:var(--gold-fill)}
+  a.chip{text-decoration:none;min-height:44px;cursor:pointer} a.chip:hover{border-color:var(--accent)} a.chip:not([href]){cursor:default}
+  .chip .ext{font-size:12px;color:var(--ink-soft);margin-left:-2px}
   button.chip{cursor:pointer;font:inherit;font-weight:600;color:var(--ink)}
   button.chip:hover{border-color:var(--accent)}
 
@@ -311,7 +313,7 @@
     <span class="spacer"></span>
     <div class="chips">
     <button class="chip" id="stats-btn" aria-label="Stats and achievements" title="Stats & achievements"><span aria-hidden="true">📊</span><i class="badge-dot" id="stats-dot" hidden></i></button>
-    <span class="chip" id="tide-chip" title="The latest block on the Blake testnet4 chain (mempool.guide). A Tide race is decided by the block after it."><svg class="ic" style="fill:var(--accent)" aria-hidden="true"><use href="#i-wave"/></svg> <small>latest block</small> <span id="tide-height">—</span></span>
+    <a class="chip" id="tide-chip" href="https://mempool.guide/testnet4" target="_blank" rel="noopener" title="The latest block on the Blake testnet4 chain — open it in the explorer (mempool.guide). A Tide race is decided by the block after it."><svg class="ic" style="fill:var(--accent)" aria-hidden="true"><use href="#i-wave"/></svg> <small id="tide-lbl">latest block</small> <span id="tide-height">—</span><span class="ext" aria-hidden="true">↗</span></a>
     <span class="chip purse" title="Doubloons are play money"><svg class="ic" aria-hidden="true"><use href="#i-coin"/></svg> <small id="purse-lbl">purse</small> <span id="purse">0</span></span>
     <button class="chip" id="sound-btn" title="sound on/off" aria-label="Sound" aria-pressed="true"><svg class="ic" id="sound-ic" aria-hidden="true"><use href="#i-sound"/></svg></button>
     </div>
@@ -1451,7 +1453,7 @@ async function fetchTip(){
   const txt = (await r.text()).trim();
   if(!/^[0-9]{1,9}$/.test(txt) || Number(txt) < 1) throw new Error('The chain answered oddly — try again in a moment.');
   tipHeight = Number(txt); tipAt = Date.now();
-  $('tide-height').textContent = fmt(tipHeight);
+  renderTideChip();
   return tipHeight;
 }
 // height→hash is NOT immutable pre-confirmation: testnet4 reorgs are routine
@@ -1541,7 +1543,17 @@ function watchTide(){
 }
 
 /* ================================================================ UI */
+function renderTideChip(){
+  const a = $('tide-chip'), h = pending ? pending.height : tipHeight;
+  if(h == null){ a.removeAttribute('href'); a.querySelector('.ext').hidden = true; return; }
+  a.href = `${EXPLORER}/block/${h}`; a.querySelector('.ext').hidden = false;
+  $('tide-lbl').textContent = pending ? 'your block' : 'latest block';
+  $('tide-height').textContent = fmt(h);
+  a.title = pending ? `Your Tide race is decided by block ${fmt(h)} — open it in the explorer (it appears there once mined).` : `The latest block on the Blake testnet4 chain — open block ${fmt(h)} in the explorer (mempool.guide). A Tide race is decided by the block after it.`;
+  a.setAttribute('aria-label', pending ? `Your block, ${h}: open in the explorer` : `Latest block, ${h}: open in the explorer`);
+}
 function renderHeader(){
+  renderTideChip();
   $('purse').textContent = fmt(mode === 'daily' ? dailyToday().bank - (veil ? veil.dailyGain : 0) : shownPurse());
   $('purse-lbl').textContent = mode === 'daily' ? 'daily bank' : SEAL ? 'practice' : 'purse';
   $('sound-ic').innerHTML = `<use href="#i-${soundOn?'sound':'mute'}"/>`;
@@ -1967,7 +1979,7 @@ if (SEAL) try {
 } catch (e) { console.error('[regatta] seal recovery', e); }
 renderSealBits(); retrySealPayout(); renderSpeed();
 firePulse(picked); // show a first-time visitor which boat is theirs, unprompted
-fetchTip().then(() => { if(pending) tideWaitLine(); }).catch(()=>{ $('tide-height').textContent='offline'; });
+fetchTip().then(() => { if(pending) tideWaitLine(); }).catch(()=>{ if(tipHeight == null && !pending){ $('tide-height').textContent='offline'; $('tide-chip').removeAttribute('href'); $('tide-chip').querySelector('.ext').hidden = true; } });
 // tabs answer "is anyone still sailing race n?" so another tab's live race isn't called finished
 const bc = 'BroadcastChannel' in window ? new BroadcastChannel('regatta') : null;
 if(bc) bc.onmessage = (e) => { if(e.data && e.data.q === 'sailing?' && racing && veil && veil.n === e.data.n) bc.postMessage({ a: e.data.n }); };
