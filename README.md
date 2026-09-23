@@ -30,6 +30,24 @@ pixel and sound from code. No build, no assets, no server, no dependencies.
 
 Practice mode is seeded locally and marked as such — instant, but not provable.
 
+## Playing
+
+- **Back one boat or several.** A set of boats is priced exactly like one:
+  its bands add up and the same 3% edge applies, so every bet returns 97%
+  over time and still verifies from the same roll.
+- **A live caller** reads the race from the same trace the water shows —
+  lead changes, halfway, the final stretch, the margin — on screen and to
+  screen readers. Place badges ride beside the boats.
+- **The Daily regatta** — five races, the same for everyone today, from a
+  1,000 bank; share the result grid.
+- **Share a Tide race** — a replay link names the block and the mark; the
+  page fetches the block from the chain and re-sails the identical race, so
+  the replay is also the proof.
+- **Stats and achievements** — per-boat records against their odds, a purse
+  line, streaks, photo finishes; go broke and the harbourmaster refloats you.
+- Skip to the finish (S), bet again (B), a fast speed, dark mode, reduced
+  motion, and a taller course on phones.
+
 ## The maths is a library
 
 `regatta.js` is pure — no DOM, no clock, no network, no crypto (the caller
